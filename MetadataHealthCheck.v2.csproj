@@ -3,7 +3,7 @@
   <!--
     netstandard2.0 + these two PackageReferences confirmed against the
     reference plugin Emby.AutoOrganize's own .csproj (§9, §13) - this is the
-    real deployment target, not a sandbox convenience choice.
+    real deployment target, not a sandbox convenience choice, test.
 
     NOTE: This project will not restore/build inside the current build
     sandbox, because nuget.org is not on the sandbox's allowed-domain list.
