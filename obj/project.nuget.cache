@@ -1,0 +1,19 @@
+{
+  "version": 2,
+  "dgSpecHash": "rZtwuZlxY/c=",
+  "success": true,
+  "projectFilePath": "C:\\PluginDev\\Emby Plugins Master\\MetadataHealthCheck.v2\\MetadataHealthCheck.v2.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\mediabrowser.common\\4.9.1.90\\mediabrowser.common.4.9.1.90.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\mediabrowser.server.core\\4.9.1.90\\mediabrowser.server.core.4.9.1.90.nupkg.sha512",
+    "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder\\microsoft.netcore.platforms\\1.1.0\\microsoft.netcore.platforms.1.1.0.nupkg.sha512",
+    "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder\\netstandard.library\\2.0.3\\netstandard.library.2.0.3.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\sqlitepcl.pretty.core\\1.2.2\\sqlitepcl.pretty.core.1.2.2.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\sqlitepclraw.core\\1.0.0\\sqlitepclraw.core.1.0.0.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\system.buffers\\4.4.0\\system.buffers.4.4.0.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\system.memory\\4.5.3\\system.memory.4.5.3.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\system.numerics.vectors\\4.4.0\\system.numerics.vectors.4.4.0.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\system.runtime.compilerservices.unsafe\\4.5.2\\system.runtime.compilerservices.unsafe.4.5.2.nupkg.sha512"
+  ],
+  "logs": []
+}
