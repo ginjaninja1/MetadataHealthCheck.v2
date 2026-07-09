@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    SANDBOX-ONLY. Compiles the exact same source tree as
+    ../MetadataHealthCheck.v2 (which targets netstandard2.0 with real
+    mediabrowser.server.core / SQLitePCL.pretty.core NuGet packages) against
+    net8.0 + the local SQLitePCLPrettyShim, since nuget.org is unreachable in
+    this build sandbox. Not part of the shipped plugin. See Project Log.
+  -->
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="../MetadataHealthCheck.v2/**/*.cs" Exclude="../MetadataHealthCheck.v2/obj/**/*.cs;../MetadataHealthCheck.v2/bin/**/*.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="../SQLitePCLPrettyShim/SQLitePCLPrettyShim.csproj" />
+  </ItemGroup>
+
+</Project>

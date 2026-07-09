@@ -1,0 +1,294 @@
+{
+  "version": 3,
+  "targets": {
+    "net8.0": {
+      "MediaBrowser.Common/4.9.1.90": {
+        "type": "package",
+        "compile": {
+          "lib/netstandard2.0/Emby.Media.Model.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/Emby.Web.GenericEdit.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/MediaBrowser.Common.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/MediaBrowser.Model.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/Emby.Media.Model.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/Emby.Web.GenericEdit.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/MediaBrowser.Common.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/MediaBrowser.Model.dll": {
+            "related": ".pdb;.xml"
+          }
+        }
+      },
+      "MediaBrowser.Server.Core/4.9.1.90": {
+        "type": "package",
+        "dependencies": {
+          "MediaBrowser.Common": "4.9.1.90"
+        },
+        "compile": {
+          "lib/netstandard2.0/Emby.Naming.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/MediaBrowser.Controller.dll": {
+            "related": ".pdb;.xml"
+          }
+        },
+        "runtime": {
+          "lib/netstandard2.0/Emby.Naming.dll": {
+            "related": ".pdb;.xml"
+          },
+          "lib/netstandard2.0/MediaBrowser.Controller.dll": {
+            "related": ".pdb;.xml"
+          }
+        }
+      },
+      "SQLitePCL.pretty.core/1.2.2": {
+        "type": "package",
+        "dependencies": {
+          "SQLitePCLRaw.core": "1.0.0",
+          "System.Memory": "4.5.3"
+        },
+        "compile": {
+          "lib/netstandard2.0/SQLitePCL.pretty.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard2.0/SQLitePCL.pretty.dll": {}
+        }
+      },
+      "SQLitePCLRaw.core/1.0.0": {
+        "type": "package",
+        "dependencies": {
+          "NETStandard.Library": "1.6.0"
+        },
+        "compile": {
+          "lib/netstandard1.1/SQLitePCLRaw.core.dll": {}
+        },
+        "runtime": {
+          "lib/netstandard1.1/SQLitePCLRaw.core.dll": {}
+        }
+      },
+      "System.Memory/4.5.3": {
+        "type": "package",
+        "compile": {
+          "ref/netcoreapp2.1/_._": {}
+        },
+        "runtime": {
+          "lib/netcoreapp2.1/_._": {}
+        }
+      },
+      "MetadataHealthCheck.v2/1.0.0": {
+        "type": "project",
+        "framework": ".NETStandard,Version=v2.0",
+        "dependencies": {
+          "SQLitePCL.pretty.core": "1.2.2",
+          "mediabrowser.server.core": "4.9.1.90"
+        },
+        "compile": {
+          "bin/placeholder/MetadataHealthCheck.v2.dll": {}
+        },
+        "runtime": {
+          "bin/placeholder/MetadataHealthCheck.v2.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "MediaBrowser.Common/4.9.1.90": {
+      "sha512": "QzXFYh7TPskAtctdCguJxep9aMSfIrsT4F+xUrdAVh4pj2KAD3DzwkY1DDPIUUD6M+Lgwag/NesBgd1pgLffbQ==",
+      "type": "package",
+      "path": "mediabrowser.common/4.9.1.90",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/netstandard2.0/Emby.Media.Model.dll",
+        "lib/netstandard2.0/Emby.Media.Model.pdb",
+        "lib/netstandard2.0/Emby.Media.Model.xml",
+        "lib/netstandard2.0/Emby.Web.GenericEdit.dll",
+        "lib/netstandard2.0/Emby.Web.GenericEdit.pdb",
+        "lib/netstandard2.0/Emby.Web.GenericEdit.xml",
+        "lib/netstandard2.0/MediaBrowser.Common.dll",
+        "lib/netstandard2.0/MediaBrowser.Common.pdb",
+        "lib/netstandard2.0/MediaBrowser.Common.xml",
+        "lib/netstandard2.0/MediaBrowser.Model.dll",
+        "lib/netstandard2.0/MediaBrowser.Model.pdb",
+        "lib/netstandard2.0/MediaBrowser.Model.xml",
+        "mediabrowser.common.4.9.1.90.nupkg.sha512",
+        "mediabrowser.common.nuspec"
+      ]
+    },
+    "MediaBrowser.Server.Core/4.9.1.90": {
+      "sha512": "lyThQ7kXhzLNisMfqzSoxrhG/7gnK9/lJyNfV/TCo10c30oKiTR2n5nG+ognv6hCNz9jmcPpAt3561Oj7EIVwQ==",
+      "type": "package",
+      "path": "mediabrowser.server.core/4.9.1.90",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/netstandard2.0/Emby.Naming.dll",
+        "lib/netstandard2.0/Emby.Naming.pdb",
+        "lib/netstandard2.0/Emby.Naming.xml",
+        "lib/netstandard2.0/MediaBrowser.Controller.dll",
+        "lib/netstandard2.0/MediaBrowser.Controller.pdb",
+        "lib/netstandard2.0/MediaBrowser.Controller.xml",
+        "mediabrowser.server.core.4.9.1.90.nupkg.sha512",
+        "mediabrowser.server.core.nuspec"
+      ]
+    },
+    "SQLitePCL.pretty.core/1.2.2": {
+      "sha512": "X2c8qnpzSa0RINKWCPRvGWUQxLYb1RTrPjXhV6Bp9m7Lj/lgwmEypKoIOoebJglZ0pZJ8GJlzNcHkM0LsbH9Dw==",
+      "type": "package",
+      "path": "sqlitepcl.pretty.core/1.2.2",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/netstandard2.0/SQLitePCL.pretty.dll",
+        "sqlitepcl.pretty.core.1.2.2.nupkg.sha512",
+        "sqlitepcl.pretty.core.nuspec"
+      ]
+    },
+    "SQLitePCLRaw.core/1.0.0": {
+      "sha512": "8tY6LQKKX6aEC/hbyNP4PkAnNrVygrzVr2W94mg8zQOwN0M51nDaFEGLYAp8kgEdreUmwCu+79vliq/WcefGZQ==",
+      "type": "package",
+      "path": "sqlitepclraw.core/1.0.0",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "lib/MonoAndroid/SQLitePCLRaw.core.dll",
+        "lib/MonoTouch/SQLitePCLRaw.core.dll",
+        "lib/Xamarin.iOS10/SQLitePCLRaw.core.dll",
+        "lib/net35/SQLitePCLRaw.core.dll",
+        "lib/net40/SQLitePCLRaw.core.dll",
+        "lib/net45/SQLitePCLRaw.core.dll",
+        "lib/netstandard1.0/SQLitePCLRaw.core.dll",
+        "lib/netstandard1.1/SQLitePCLRaw.core.dll",
+        "lib/portable-net40+sl5+netcore45+wp8+MonoAndroid10+MonoTouch10+Xamarin.iOS10/SQLitePCLRaw.core.dll",
+        "lib/portable-net45+netcore45+wpa81+MonoAndroid10+MonoTouch10+Xamarin.iOS10/SQLitePCLRaw.core.dll",
+        "lib/portable-net45+netcore45+wpa81+wp8+MonoAndroid10+MonoTouch10+Xamarin.iOS10/SQLitePCLRaw.core.dll",
+        "lib/uap10.0/SQLitePCLRaw.core.dll",
+        "lib/win8/SQLitePCLRaw.core.dll",
+        "lib/win81/SQLitePCLRaw.core.dll",
+        "lib/wpa81/SQLitePCLRaw.core.dll",
+        "sqlitepclraw.core.1.0.0.nupkg.sha512",
+        "sqlitepclraw.core.nuspec"
+      ]
+    },
+    "System.Memory/4.5.3": {
+      "sha512": "3oDzvc/zzetpTKWMShs1AADwZjQ/36HnsufHRPcOjyRAAMLDlu2iD33MBI2opxnezcVUtXyqDXXjoFMOU9c7SA==",
+      "type": "package",
+      "path": "system.memory/4.5.3",
+      "files": [
+        ".nupkg.metadata",
+        ".signature.p7s",
+        "LICENSE.TXT",
+        "THIRD-PARTY-NOTICES.TXT",
+        "lib/netcoreapp2.1/_._",
+        "lib/netstandard1.1/System.Memory.dll",
+        "lib/netstandard1.1/System.Memory.xml",
+        "lib/netstandard2.0/System.Memory.dll",
+        "lib/netstandard2.0/System.Memory.xml",
+        "ref/netcoreapp2.1/_._",
+        "system.memory.4.5.3.nupkg.sha512",
+        "system.memory.nuspec",
+        "useSharedDesignerContext.txt",
+        "version.txt"
+      ]
+    },
+    "MetadataHealthCheck.v2/1.0.0": {
+      "type": "project",
+      "path": "../MetadataHealthCheck.v2/MetadataHealthCheck.v2.csproj",
+      "msbuildProject": "../MetadataHealthCheck.v2/MetadataHealthCheck.v2.csproj"
+    }
+  },
+  "projectFileDependencyGroups": {
+    "net8.0": [
+      "MetadataHealthCheck.v2 >= 1.0.0"
+    ]
+  },
+  "packageFolders": {
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\": {},
+    "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {},
+    "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder": {}
+  },
+  "project": {
+    "version": "1.0.0",
+    "restore": {
+      "projectUniqueName": "C:\\PluginDev\\Emby Plugins Master\\SmokeTest\\SmokeTest.csproj",
+      "projectName": "SmokeTest",
+      "projectPath": "C:\\PluginDev\\Emby Plugins Master\\SmokeTest\\SmokeTest.csproj",
+      "packagesPath": "C:\\Users\\Nicholas Bird\\.nuget\\packages\\",
+      "outputPath": "C:\\PluginDev\\Emby Plugins Master\\SmokeTest\\obj\\",
+      "projectStyle": "PackageReference",
+      "fallbackFolders": [
+        "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages",
+        "C:\\Program Files\\dotnet\\sdk\\NuGetFallbackFolder"
+      ],
+      "configFilePaths": [
+        "C:\\Users\\Nicholas Bird\\AppData\\Roaming\\NuGet\\NuGet.Config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.FallbackLocation.config",
+        "C:\\Program Files (x86)\\NuGet\\Config\\Microsoft.VisualStudio.Offline.config"
+      ],
+      "originalTargetFrameworks": [
+        "net8.0"
+      ],
+      "sources": {
+        "C:\\Program Files (x86)\\Microsoft SDKs\\NuGetPackages\\": {},
+        "https://api.nuget.org/v3/index.json": {}
+      },
+      "frameworks": {
+        "net8.0": {
+          "targetAlias": "net8.0",
+          "projectReferences": {
+            "C:\\PluginDev\\Emby Plugins Master\\MetadataHealthCheck.v2\\MetadataHealthCheck.v2.csproj": {
+              "projectPath": "C:\\PluginDev\\Emby Plugins Master\\MetadataHealthCheck.v2\\MetadataHealthCheck.v2.csproj"
+            }
+          }
+        }
+      },
+      "warningProperties": {
+        "warnAsError": [
+          "NU1605"
+        ]
+      },
+      "restoreAuditProperties": {
+        "enableAudit": "true",
+        "auditLevel": "low",
+        "auditMode": "direct"
+      },
+      "SdkAnalysisLevel": "9.0.300"
+    },
+    "frameworks": {
+      "net8.0": {
+        "targetAlias": "net8.0",
+        "imports": [
+          "net461",
+          "net462",
+          "net47",
+          "net471",
+          "net472",
+          "net48",
+          "net481"
+        ],
+        "assetTargetFallback": true,
+        "warn": true,
+        "frameworkReferences": {
+          "Microsoft.NETCore.App": {
+            "privateAssets": "all"
+          }
+        },
+        "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.315/PortableRuntimeIdentifierGraph.json"
+      }
+    }
+  }
+}

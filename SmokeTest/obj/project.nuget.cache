@@ -1,0 +1,14 @@
+{
+  "version": 2,
+  "dgSpecHash": "CakDVRTdb4Q=",
+  "success": true,
+  "projectFilePath": "C:\\PluginDev\\Emby Plugins Master\\SmokeTest\\SmokeTest.csproj",
+  "expectedPackageFiles": [
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\mediabrowser.common\\4.9.1.90\\mediabrowser.common.4.9.1.90.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\mediabrowser.server.core\\4.9.1.90\\mediabrowser.server.core.4.9.1.90.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\sqlitepcl.pretty.core\\1.2.2\\sqlitepcl.pretty.core.1.2.2.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\sqlitepclraw.core\\1.0.0\\sqlitepclraw.core.1.0.0.nupkg.sha512",
+    "C:\\Users\\Nicholas Bird\\.nuget\\packages\\system.memory\\4.5.3\\system.memory.4.5.3.nupkg.sha512"
+  ],
+  "logs": []
+}
