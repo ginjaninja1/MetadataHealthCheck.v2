@@ -10,6 +10,40 @@ Capture directives here
 Build Log
 What is done, what is in progress, and what is planned for the project.
 
+
+Status as of 2026-07-10
+
+
+MetadataHealthCheck.v2.csproj builds and runs against real NuGet packages
+(netstandard2.0, mediabrowser.server.core 4.9.1.90,
+SQLitePCL.pretty.core 1.2.2) for the first time — previously only
+validated against a local shim. SmokeTest runs against the real project
+directly, using a new InMemoryMatchRepository in place of the real
+SQLite-backed MatchRepository. All 8 Phase 1 assertions pass on this
+configuration.
+Real SQLite persistence via MatchRepository/SQLitePCL.pretty.core is
+unverified. No compatible SQLitePCLRaw provider version was found for
+standalone use (2.1.11 and 1.1.14 both fail). Not a blocker for real
+deployment — Emby's own host process initializes the provider before any
+plugin code runs — but open until checked inside an actual Emby host.
+Storage/Sqlite/NativeSqlite.cs and SqliteConnectionWrapper.cs (dead,
+unreferenced, and non-compiling under netstandard2.0) are deleted.
+Storage/Sqlite/SqliteExtensions.cs added — TryBind/ExecuteQuery/
+RunQueries, ported from Emby.AutoOrganize's own Data/SqliteExtensions.cs
+(previously missing; not part of the real SQLitePCL.pretty.core package).
+NuGet.Config files (repo root, SandboxValidation/, SmokeTest/,
+SQLitePCLPrettyShim/) that cleared all package sources are deleted.
+EmbyArtistProvider.cs's ArtistFilter split no longer uses
+StringSplitOptions.TrimEntries or the single-char Split overload —
+neither is guaranteed present in netstandard2.0.
+
+Class tree changes (see full tree below for context):
+
+
+Storage/Sqlite/SqliteExtensions.cs — Completed (new)
+Storage/Sqlite/NativeSqlite.cs, SqliteConnectionWrapper.cs — removed (were dead Phase-1a code, untracked in the tree, never actually deleted until now)
+SmokeTest/InMemoryMatchRepository.cs — added, sandbox/test-only
+
 ## Phase 1 — Skeleton + one path end-to-end — DONE, tested 2026-07-08
 
 Scope per §21 phase 1: Core model/interfaces, SQLite storage (core tables only),
@@ -167,8 +201,6 @@ Not started.
 
 
 Classes by tree (tagged by progress)
-
-```
 MetadataHealthCheck.v2/                                    (real plugin source - netstandard2.0)
 ├── Core/
 │   ├── Model/                              Completed (Phase 1 scope)
@@ -176,7 +208,7 @@ MetadataHealthCheck.v2/                                    (real plugin source -
 │   └── Engine/ResolutionEngine.cs          Completed (Phase 1 scope; sampler pending)
 ├── Sources/Emby/
 │   ├── EmbyArtist.cs                       Completed
-│   ├── EmbyArtistProvider.cs               Completed
+│   ├── EmbyArtistProvider.cs               Completed (ArtistFilter split fixed for netstandard2.0 compat, 2026-07-10)
 │   └── IEmbyLibraryReader.cs               Placeholder (interface only — real ILibraryManager impl pending, needs live Emby SDK)
 ├── Resolvers/MusicBrainz/
 │   ├── Client/IMusicBrainzApiClient.cs     Placeholder (interface only — real HTTP impl pending, needs live network)
@@ -196,7 +228,8 @@ MetadataHealthCheck.v2/                                    (real plugin source -
 │   └── JointEvidenceRules.cs                Not started (Phase 2)
 ├── Storage/
 │   ├── Sqlite/BaseSqliteRepository.cs      Completed — ported from Emby.AutoOrganize's own source (Phase 1b)
-│   ├── Sqlite/MatchRepository.cs           Completed (3 of §9.1's ~14 tables), uses confirmed reference CRUD idiom
+│   ├── Sqlite/SqliteExtensions.cs          Completed — ported from Emby.AutoOrganize's own Data/SqliteExtensions.cs (added 2026-07-10; was missing, not part of the real SQLitePCL.pretty.core package)
+│   ├── Sqlite/MatchRepository.cs           Completed (3 of §9.1's ~14 tables), uses confirmed reference CRUD idiom — real SQLite persistence unverified standalone, see Evidence Log 2026-07-10
 │   ├── InMemoryIdentityCache.cs             Completed (Phase 1 stand-in; persistent version Phase 4)
 │   ├── AnchorDependencyRepository.cs        Not started (Phase 3)
 │   └── ApiCacheRepository.cs                Not started (Phase 2, api_cache table)
@@ -205,9 +238,11 @@ MetadataHealthCheck.v2/                                    (real plugin source -
 ├── Config/                                  Not started (Phase 5)
 └── Diagnostics/StructuredLogger.cs           Completed (Console sink; real ILogger sink pending host access)
 
-SQLitePCLPrettyShim/          SANDBOX-ONLY, not shipped — API-compatible test double for SQLitePCL.pretty.core
-SandboxValidation/            SANDBOX-ONLY, not shipped — compiles MetadataHealthCheck.v2's real source against the shim
-SmokeTest/                    SANDBOX-ONLY, not shipped — manual-assertion console harness (xUnit blocked, see Evidence Log)
+SQLitePCLPrettyShim/          SANDBOX-ONLY, not shipped — API-compatible test double for SQLitePCL.pretty.core (AI-assisted dev use only, not needed with real NuGet access)
+SandboxValidation/            SANDBOX-ONLY, not shipped — compiles MetadataHealthCheck.v2's real source against the shim (AI-assisted dev use only)
+SmokeTest/                    SANDBOX-ONLY, not shipped — manual-assertion console harness (xUnit blocked in AI sandbox, see Evidence Log). Real developer use: references MetadataHealthCheck.v2.csproj directly with real NuGet packages, using InMemoryMatchRepository.cs in place of real SQLite persistence.
+├── Program.cs                              Completed — verified against real build 2026-07-10
+└── InMemoryMatchRepository.cs              Completed (added 2026-07-10) — fake IMatchRepository, bypasses unresolved real-SQLite provider version issue
 ```
 
 
