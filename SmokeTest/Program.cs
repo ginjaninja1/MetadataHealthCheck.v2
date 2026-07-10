@@ -5,7 +5,7 @@ using MetadataHealthCheck.v2.Fixtures;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
-using MetadataHealthCheck.v2.Storage.Sqlite;
+using SmokeTest;
 
 int failures = 0;
 void Assert(bool cond, string message)
@@ -14,15 +14,17 @@ void Assert(bool cond, string message)
     else { Console.WriteLine($"  FAIL: {message}"); failures++; }
 }
 
-Console.WriteLine("=== Phase 1 End-to-End Skeleton Test ===");
-
-var dbPath = Path.Combine(Path.GetTempPath(), $"mhc-v2-smoketest-{Guid.NewGuid():N}.db");
-Console.WriteLine($"Using SQLite db: {dbPath}");
+Console.WriteLine("=== Phase 1 End-to-End Skeleton Test (in-memory repository) ===");
+Console.WriteLine("NOTE: uses an in-memory IMatchRepository, not real SQLite - see");
+Console.WriteLine("InMemoryMatchRepository.cs for why. This verifies engine logic");
+Console.WriteLine("(candidate generation, scoring, decisions, identity cache); real");
+Console.WriteLine("SQLite persistence should be verified separately inside an actual");
+Console.WriteLine("Emby host.\n");
 
 var mbClient = new FixtureMusicBrainzApiClient();
 var identityCache = new InMemoryIdentityCache();
-var repo = new MatchRepository(dbPath);
 var logger = new StructuredLogger();
+var repo = new InMemoryMatchRepository();
 var scoringConfig = new ScoringConfig();
 
 var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache);
@@ -43,7 +45,6 @@ Console.WriteLine($"\nDecision: target={result.TargetId} status={result.Status} 
 Assert(result.TargetId == FixtureMusicBrainzApiClient.MbidX, "correct candidate (X) selected as top match");
 Assert(result.Status is "auto_accept" or "needs_review", "decision status is auto_accept or needs_review (not auto_reject) for the clearly-better candidate");
 
-// Re-run should hit the identity cache if the first run auto-accepted.
 if (result.Status == "auto_accept")
 {
     var second = engine.ResolveOne(artist, context);
@@ -51,16 +52,13 @@ if (result.Status == "auto_accept")
     Assert(logger.Lines.Any(l => l.Contains("Identity cache hit")), "identity cache hit was logged");
 }
 
-// Verify SQLite persistence actually happened (not just in-memory).
 var persisted = repo.GetExisting(artist.SourceSystem, artist.SourceId, "MusicBrainz");
-Assert(persisted != null, "match result persisted to SQLite and re-readable");
-Assert(persisted != null && persisted.TargetId == result.TargetId, "persisted target id matches decision");
+Assert(persisted != null, "match result saved and re-readable via GetExisting");
+Assert(persisted != null && persisted.TargetId == result.TargetId, "retrieved target id matches decision");
 
 Console.WriteLine("\n--- Structured log ---");
 foreach (var line in logger.Lines) Console.WriteLine(line);
 
-// Edge case: an artist with no matching MusicBrainz data at all should not
-// crash and should land on needs_review (empty candidate list), not throw.
 var unknownArtist = new EmbyArtist
 {
     SourceId = "emby-artist-unknown",
@@ -74,8 +72,5 @@ var unknownResult = engine.ResolveOne(unknownArtist, context);
 Assert(unknownResult.Status == "needs_review", $"unresolvable artist lands on needs_review, not a crash or false accept (got {unknownResult.Status})");
 
 Console.WriteLine($"\n=== {(failures == 0 ? "ALL PASS" : failures + " FAILURE(S)")} ===");
-File.Delete(dbPath);
-if (File.Exists(dbPath + "-wal")) File.Delete(dbPath + "-wal");
-if (File.Exists(dbPath + "-shm")) File.Delete(dbPath + "-shm");
 
 return failures == 0 ? 0 : 1;

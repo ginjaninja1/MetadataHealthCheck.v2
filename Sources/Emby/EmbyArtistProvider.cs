@@ -27,7 +27,15 @@ namespace MetadataHealthCheck.v2.Sources.Emby
             if (string.IsNullOrWhiteSpace(_artistFilter))
                 return all;
 
-            var tokens = _artistFilter.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            // StringSplitOptions.TrimEntries requires netstandard2.1+/.NET Core 3+
+            // and isn't available under this project's netstandard2.0 target - trim
+            // manually instead. Also using the char[]-array Split overload rather
+            // than the single-char one, since that convenience overload isn't
+            // guaranteed present in netstandard2.0's own API surface either.
+            var tokens = _artistFilter
+                .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
+                .Select(t => t.Trim())
+                .ToArray();
             return all.Where(a => tokens.Any(t =>
                 (Guid.TryParse(t, out _) && string.Equals(a.SourceId, t, StringComparison.OrdinalIgnoreCase))
                 || string.Equals(a.DisplayName, t, StringComparison.OrdinalIgnoreCase)));

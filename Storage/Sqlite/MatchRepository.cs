@@ -1,4 +1,4 @@
-using MetadataHealthCheck.v2.Core.Interfaces;
+﻿using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Diagnostics;
 using SQLitePCL.pretty;
@@ -148,25 +148,6 @@ namespace MetadataHealthCheck.v2.Storage.Sqlite
                 };
             }
             return null;
-        }
-    }
-
-    internal static class SqliteExtensions
-    {
-        // Mirrors Emby.AutoOrganize's Data/SqliteExtensions.cs RunQueries helper.
-        public static void RunQueries(this IDatabaseConnection db, string[] queries)
-        {
-            db.BeginTransaction(TransactionMode.Deferred);
-            try
-            {
-                db.ExecuteAll(string.Join(";", queries));
-                db.CommitTransaction();
-            }
-            catch
-            {
-                db.RollbackTransaction();
-                throw;
-            }
         }
     }
 }

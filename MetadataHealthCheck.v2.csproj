@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
-  <!--
+	<!--
     netstandard2.0 + these two PackageReferences confirmed against the
     reference plugin Emby.AutoOrganize's own .csproj (§9, §13) - this is the
     real deployment target, not a sandbox convenience choice, test.
@@ -13,25 +13,41 @@
     detail. When building for real deployment (i.e. anywhere with normal
     NuGet access), build THIS project directly - no shim involved.
   -->
-  <PropertyGroup>
-    <TargetFramework>netstandard2.0</TargetFramework>
-    <ImplicitUsings>enable</ImplicitUsings>
-    <Nullable>enable</Nullable>
-    <LangVersion>latest</LangVersion>
-  </PropertyGroup>
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<Nullable>enable</Nullable>
+		<LangVersion>latest</LangVersion>
+	</PropertyGroup>
 
-  <ItemGroup>
-    <PackageReference Include="mediabrowser.server.core" Version="4.9.1.90" />
-    <PackageReference Include="SQLitePCL.pretty.core" Version="1.2.2" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="mediabrowser.server.core" Version="4.9.1.90" />
+		<PackageReference Include="SQLitePCL.pretty.core" Version="1.2.2" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Update="V2Specification v0.1.md">
-      <SubType>Component</SubType>
-    </None>
-    <None Update="V2Specification.md">
-      <SubType>Component</SubType>
-    </None>
-  </ItemGroup>
+	<!--
+    SDK-style projects auto-include every .cs file under this project's own
+    folder, recursively, by default. SmokeTest/, SandboxValidation/, and
+    SQLitePCLPrettyShim/ physically live inside this folder (as sibling
+    sandbox-only projects, not part of the shipped plugin) - without these
+    excludes, their source (and worse, their generated obj/ AssemblyInfo.cs
+    files) gets compiled into THIS project too, causing duplicate-attribute
+    errors and other conflicts. This has nothing to do with NuGet access;
+    it's needed in every environment, including one with normal internet.
+  -->
+	<ItemGroup>
+		<Compile Remove="SmokeTest/**/*.cs" />
+		<Compile Remove="SandboxValidation/**/*.cs" />
+		<Compile Remove="SQLitePCLPrettyShim/**/*.cs" />
+	</ItemGroup>
+
+	<ItemGroup>
+		<None Update="V2Specification v0.1.md">
+			<SubType>Component</SubType>
+		</None>
+		<None Update="V2Specification.md">
+			<SubType>Component</SubType>
+		</None>
+	</ItemGroup>
 
 </Project>

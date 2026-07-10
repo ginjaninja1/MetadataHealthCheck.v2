@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="MetadataHealthCheck.v2.csproj" />
+  <Project Path="SmokeTest/SmokeTest.csproj" />
+</Solution>
