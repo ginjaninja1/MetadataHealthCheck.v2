@@ -5,16 +5,11 @@ using MetadataHealthCheck.v2.Diagnostics;
 namespace MetadataHealthCheck.v2.Core.Engine
 {
     /// <summary>
-    /// Phase 1 slice of §3.2's pipeline: identity cache check → candidate
-    /// generation (Strategy A then B, priority order) → evidence collection
-    /// (all evidence collectors run to completion, no early-stop) → simple
-    /// weighted-sum scoring → decision gate → repository writes.
-    ///
-    /// The Sequential Sampler (§5.5) — one-observation-at-a-time with early
-    /// stopping — is a Phase 2 addition (§21). This engine collects all
-    /// available evidence per candidate before scoring, which is a valid but
-    /// less API-efficient predecessor behavior, consistent with "Goal: one
-    /// artist resolved end-to-end, logged, stored" for Phase 1.
+    /// §3.2's pipeline: identity cache check → candidate generation (Strategy A
+    /// then B, priority order) → the Sequential Sampler (§5.5, Core/Engine/
+    /// SequentialSampler.cs) — adaptive, early-stopping evidence collection and
+    /// scoring, replacing Phase 1's "collect everything, then score once" loop
+    /// — → repository writes.
     /// </summary>
     public class ResolutionEngine
     {
@@ -54,27 +49,18 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
             _logger.Debug("CandidateGen", "{0} candidates generated for {1}.", candidates.Count, artist.DisplayName);
 
-            var scored = new List<ScoredCandidate>();
             foreach (var candidate in candidates)
-            {
                 _repository.SaveCandidate(candidate);
 
-                var evidence = new List<EvidenceRecord>();
-                foreach (var collector in _plugin.EvidenceCollectors)
-                {
-                    var record = collector.Collect(artist, candidate, context);
-                    if (record == null) continue;
-                    evidence.Add(record);
-                    _repository.SaveEvidence(record);
-                    _logger.Debug("Evidence", "[{0}] {1} :: {2}", candidate.TargetId, record.EvidenceType, record.Rationale);
-                }
+            var sampler = new SequentialSampler<Sources.Emby.EmbyArtist>(
+                _plugin.EvidenceCollectors,
+                _plugin.ObservationEvidenceCollectors,
+                _plugin.ObservationUnitProvider,
+                _plugin.Scorer,
+                _plugin.DecisionGate,
+                _logger);
 
-                var result = _plugin.Scorer.Score(candidate, evidence, _scoringConfig);
-                scored.Add(result);
-                _logger.Debug("Scorer", "Candidate {0} running_llr={1:F2} confidence={2:F2}", candidate.TargetId, result.RunningLlr, result.Confidence);
-            }
-
-            var decision = _plugin.DecisionGate.Decide(scored, _scoringConfig, artist.SourceSystem, artist.SourceId);
+            var decision = sampler.Resolve(artist, candidates, _scoringConfig, _repository, context);
             _repository.SaveMatchResult(decision);
 
             if (decision.Status == "auto_accept")

@@ -8,6 +8,19 @@ namespace MetadataHealthCheck.v2.Core.Model
         string DisplayName { get; }
     }
 
+    /// <summary>
+    /// One unit the Sequential Sampler (§5.5, Core/Engine/SequentialSampler.cs) can
+    /// draw an observation from. Deliberately opaque to Core: for the Artist/MusicBrainz
+    /// case a unit is one track and BucketKey is "AlbumArtist"/"Artist"/"Composer"
+    /// (§5's role tiers); a future entity type with no natural role/bucket concept
+    /// (e.g. Album, per §11.4's own example) can use a single constant BucketKey, or
+    /// simply not implement IObservationUnitProvider at all.
+    /// </summary>
+    public interface IObservationUnit
+    {
+        string BucketKey { get; }
+    }
+
     public class Candidate
     {
         // Not present in the spec's §4 listing but required for EvidenceRecord.CandidateId

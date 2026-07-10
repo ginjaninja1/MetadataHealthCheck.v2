@@ -13,7 +13,11 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         public string TargetEntityType => "Artist";
 
         public IEnumerable<ICandidateGenerationStrategy<EmbyArtist>> Strategies { get; }
+        // Static, candidate-pair-level evidence -- name similarity only for now.
         public IEnumerable<IEvidenceCollector<EmbyArtist>> EvidenceCollectors { get; }
+        // Per-observation (per-track) evidence, sampled by SequentialSampler.
+        public IEnumerable<IObservationEvidenceCollector<EmbyArtist>> ObservationEvidenceCollectors { get; }
+        public IObservationUnitProvider<EmbyArtist>? ObservationUnitProvider { get; }
         public IBeliefScorer Scorer { get; }
         public IDecisionGate DecisionGate { get; }
 
@@ -29,11 +33,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
             EvidenceCollectors = new IEvidenceCollector<EmbyArtist>[]
             {
                 new NameDistanceEvidenceCollector(client),
-                new WorkRelationshipEvidenceCollector(client),
-                // Remaining §6.1 collectors arrive in Phase 2's full evidence set, §21
             };
 
-            Scorer = new SimpleWeightedSumScorer();     // Bayesian scorer arrives in Phase 2, §21
+            ObservationEvidenceCollectors = new IObservationEvidenceCollector<EmbyArtist>[]
+            {
+                new WorkRelationshipEvidenceCollector(client),
+                // AliasEvidenceCollector, RecordingRelationshipEvidenceCollector,
+                // AlbumMatchEvidenceCollector, CorroborationTierEvidenceCollector
+                // arrive alongside BayesianBeliefScorer as a follow-up step, §21.
+            };
+
+            ObservationUnitProvider = new EmbyArtistObservationUnitProvider();
+
+            Scorer = new SimpleWeightedSumScorer();     // Bayesian scorer arrives as a follow-up step, §21
             DecisionGate = new ThresholdDecisionGate();
         }
     }

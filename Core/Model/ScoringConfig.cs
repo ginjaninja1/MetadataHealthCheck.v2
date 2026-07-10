@@ -10,7 +10,28 @@ namespace MetadataHealthCheck.v2.Core.Model
         public double AutoAcceptThreshold { get; set; } = 4.0;
         public double AutoRejectThreshold { get; set; } = -3.0;
         public double MinMarginOverRunnerUp { get; set; } = 2.0;
-        public string Version { get; set; } = "phase1-default";
+        public string Version { get; set; } = "phase2-default";
+
+        // Sampling budget per bucket (§5.5) -- a ceiling, not a target. The sampler
+        // stops as soon as confidence crosses a bound, which may happen well before
+        // a bucket's ceiling is reached (§18's worked example: AlbumArtist ceiling of
+        // 3 never approached, resolved after 1 observation).
+        public Dictionary<string, int> BucketCeiling { get; set; } = new()
+        {
+            ["AlbumArtist"] = 3,
+            ["Artist"] = 4,
+            ["Composer"] = 6,
+        };
+
+        // Multiplier applied to per-observation evidence based on which bucket it
+        // came from (§6.4). Starting neutral (1.0 everywhere) -- tune once there's
+        // real output to look at, per-bucket, rather than guessing up front.
+        public Dictionary<string, double> RoleWeights { get; set; } = new()
+        {
+            ["AlbumArtist"] = 1.0,
+            ["Artist"] = 1.0,
+            ["Composer"] = 1.0,
+        };
 
         // One entry per §6.1 evidence type. Raw evidence -> LLR lookup happens here,
         // never baked into the EvidenceRecord itself (§5.4, required for re-score).

@@ -1,6 +1,6 @@
 Directives
 Capture directives here
-
+- https://github.com/ginjaninja1/MetadataHealthCheck.v2
 - Build in phased order per spec §21; update this log at the end of each unit of work after testing has confirmed state (this file's own standing instruction).
 - v2 runs against its own SQLite database/config, entirely decoupled from the existing prototype (§19.1) — confirmed respected throughout.
 - Emby plugin framework is netstandard2.0. SQLite approach is settled as matching the patterns used in the existing Emby plugin Emby.AutoOrganize (https://github.com/MediaBrowser/Emby.AutoOrganize) — confirmed by cloning and reading that repo directly, not re-derived independently.
