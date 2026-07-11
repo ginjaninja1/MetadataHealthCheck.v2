@@ -11,6 +11,28 @@ Build Log
 What is done, what is in progress, and what is planned for the project.
 
 
+Status as of 2026-07-11
+
+
+Sequential Sampler (§5.5) built and integrated — Phase 2's central
+mechanism, replacing Phase 1's collect-everything-then-score-once loop
+with adaptive, early-stopping, multi-candidate joint evaluation. Built
+alongside a new entity-agnostic observation-unit abstraction so future
+non-Artist resolvers aren't blocked on Artist-specific assumptions
+(confirmed against §11.4's own Album example before committing to the
+design). All 34 SmokeTest assertions pass, including 8 new real-world
+and edge-case scenarios (see Phase 2 entry below and Evidence Log for
+detail). Two structural gaps confirmed by real-world testing, not just
+anticipated by the spec: composer-only artists cannot be resolved as
+candidates at all today (motivating Phase 3's Strategy C), and no
+recording/performer-tier evidence collector exists yet (Phase 2 scope,
+not started). Two design decisions confirmed and closed off from further
+relitigation: RoleWeights stays neutral across all tiers, and
+ScoringConfig stays a plain developer-edited class rather than a
+database-backed settings UI (door left open to add one later if this
+ships as a real Emby plugin).
+
+
 Status as of 2026-07-10
 
 
@@ -196,33 +218,144 @@ This is now understood and documented, and matters again if/when a
   (currently takes this project's own `StructuredLogger`) — needs a real Emby
   host to confirm the exact "get a logger scoped by name" call (§15.1, §20.4).
 
-## Phase 2–5
+## Phase 2 (in progress) — Sequential Sampler + interface extensibility — this increment DONE, tested 2026-07-11
+
+Scope of this increment (not all of Phase 2 — see Class Tree below for what
+remains): §5.5's Sequential Sampler, replacing Phase 1's "collect all
+evidence, then score once" with adaptive, early-stopping, multi-candidate
+joint evaluation per observation round. Built alongside a new, deliberately
+entity-agnostic `IObservationUnit`/`IObservationEvidenceCollector`/
+`IObservationUnitProvider` abstraction (§11.2, §11.4) so a future non-Artist
+resolver isn't blocked on this — confirmed against §11.4's own Album example
+before committing to the shape.
+
+**What was built:**
+- Core/Model: `IObservationUnit` — deliberately opaque to Core (§11.4).
+- Core/Interfaces: `IObservationEvidenceCollector<T>`, `IObservationUnitProvider<T>`;
+  `IResolverPlugin<T>` extended with both (nullable/empty-list when an entity
+  type has no observation concept — graceful degrade to Phase 1 behavior).
+- Core/Engine/`SequentialSampler.cs` — static evidence once per candidate,
+  then bucket-by-bucket, unit-by-unit sampling with all live candidates
+  scored and decision-gate-checked jointly after every single observation
+  (not one candidate run to completion in isolation — required by the
+  margin check between top candidate and runner-up).
+- Core/Engine/`ResolutionEngine.cs` — `ResolveOne` now delegates to
+  `SequentialSampler` instead of its old flat per-candidate loop.
+- Core/Model/`ScoringConfig.cs` — added `BucketCeiling` (AlbumArtist 3,
+  Artist 4, Composer 6 — safety caps, not targets) and `RoleWeights` (all
+  neutral 1.0 — **confirmed decision**: composer-tier evidence is not
+  weighted down; difficulty is in generating a composer-only candidate at
+  all, not in the evidence being weaker once found — see Evidence Log).
+- Sources/Emby: `EmbyTrackObservationUnit.cs` (new), `EmbyArtistObservationUnitProvider.cs`
+  (new) — AlbumArtist→Artist→Composer bucket order, distance-seeking sample
+  order within a bucket (2 of §5.5.1's 4 rules implemented against real
+  data on `EmbyTrackCredit`; the other 2 need data this model doesn't carry
+  yet — documented in-file, not faked).
+- Resolvers/MusicBrainz/Evidence/`WorkRelationshipEvidenceCollector.cs` —
+  converted from `IEvidenceCollector` (looped over all tracks itself,
+  stopped at first hit) to `IObservationEvidenceCollector` (checks one
+  sampler-supplied track at a time).
+- Resolvers/MusicBrainz/`MusicBrainzArtistResolverPlugin.cs` — wires
+  `ObservationEvidenceCollectors`/`ObservationUnitProvider`.
+- Scoring/`SimpleWeightedSumScorer.cs` — applies `RoleWeights` multiplier
+  (currently a no-op at 1.0 everywhere, but wired so it isn't dead config).
+- Fixtures/`FixtureMusicBrainzApiClient.cs` — `SearchRecording` made
+  track-title-sensitive (closes the looseness flagged 2026-07-10); added
+  real-world data for 4 additional cases (see Evidence Log).
+- SmokeTest/`Program.cs` — 8 new scenarios, 26 new assertions (34 total
+  in the suite, up from Phase 1's 8).
+
+**Testing performed (SmokeTest console app, `dotnet run`):**
+1. Original Phase 1 "Sarah Vaughan" scenario re-verified under the new
+   sampler architecture: identical result (auto_accept, running confidence
+   0.98, resolved after exactly 1 observation in bucket AlbumArtist) —
+   confirms the refactor didn't regress Phase 1. PASS
+2. Multi-track adaptive stop: 2 AlbumArtist tracks, first carries no
+   evidence, second does — sampler correctly draws both (not 1, not
+   short-circuited on a false accept) before resolving. PASS (4 assertions)
+3. Bucket escalation: AlbumArtist exhausts naturally (2 dead tracks, no
+   ceiling hit), Artist tier resolves after exactly 1 observation there.
+   PASS (3 assertions)
+4. `BucketCeiling` enforcement: 3 dead AlbumArtist tracks fill the ceiling;
+   a 4th track with real evidence is never reached — lands on
+   `needs_review` despite better evidence existing one track later,
+   confirming the ceiling is a real, enforced cap. PASS
+5. Full exhaustion: dead tracks across all 3 buckets terminate cleanly at
+   `needs_review`, no crash. PASS (2 assertions)
+6. Real-world case, Gus Black (composer-only, single track — "Borrowed
+   Time", *One Cell in the Sea*): candidate generation is entirely
+   recording/performer-credit driven, so the only candidate generated is
+   A Fine Frenzy (the real performer), not Gus Black. That spurious
+   candidate is correctly rejected on a Poor name-similarity match
+   (0.077 computed similarity), landing on `needs_review`, confidence
+   0.12. Confirms a real, structural gap — composer-only candidate
+   generation isn't built (Phase 3 territory) — while confirming the
+   existing name-mismatch safety net prevents a false accept. PASS
+   (3 assertions)
+7. Real-world case, Queen ("Bohemian Rhapsody" on the non-canonical "Top
+   2000 (Radio 2)" compilation, Artist-tier not AlbumArtist since "Various
+   Artists" holds that role): correct candidate (Queen) is generated and
+   identified, static NearExact (confidence 0.82), but no composer/writer-
+   type relationship applies to a performer-only band credit — lands on
+   `needs_review`, exposing the missing performer/recording-tier evidence
+   collector, unrelated to the odd album metadata. PASS (2 assertions)
+8. Real-world case, Florence + the Machine naming variants ("Florence and
+   the machine" / "Florence & The Machine" / "Florence + The machine",
+   no track evidence by design, isolating pure name-matching): classified
+   Close (0.875), NearExact (0.955), and NearExact (1.000) respectively —
+   exact figures computed by hand against the real Levenshtein algorithm
+   before writing the assertions, then confirmed by the actual run.
+   Verified against MusicBrainz's own listing: its sort-name for this
+   artist is literally "Florence and the Machine". PASS (9 assertions)
+9. Real-world case, Del Serino (composer alias, "That's It, I Quit, I'm
+   Moving On" on Adele's *19*): same structural gap as Gus Black — Adele
+   surfaces as the spurious candidate, correctly rejected on a Poor name
+   match, confidence 0.12. Does not yet independently demonstrate the
+   alias-resolution problem (that layer isn't reachable until
+   composer-candidate-generation exists) — kept in the pot to
+   differentiate from Gus Black once Phase 3 lands. PASS (2 assertions)
+
+All 34 assertions passed in this unit.
+
+**Not yet done, still Phase 2 scope:** `AliasEvidenceCollector`,
+`RecordingRelationshipEvidenceCollector`, `AlbumMatchEvidenceCollector`,
+`CorroborationTierEvidenceCollector`, `BayesianBeliefScorer` (still
+`SimpleWeightedSumScorer` standing in), `EvidenceTranslator`,
+`JointEvidenceRules`, `ApiCacheRepository`. Reproducing §18's worked
+example exactly still depends on the album-match/corroboration-tier
+collectors above.
+
+## Phase 3–5
 Not started.
 
 
 Classes by tree (tagged by progress)
 MetadataHealthCheck.v2/                                    (real plugin source - netstandard2.0)
 ├── Core/
-│   ├── Model/                              Completed (Phase 1 scope)
-│   ├── Interfaces/                         Completed
-│   └── Engine/ResolutionEngine.cs          Completed (Phase 1 scope; sampler pending)
+│   ├── Model/                              Completed (Phase 1 scope + IObservationUnit, BucketCeiling/RoleWeights, Phase 2)
+│   ├── Interfaces/                         Completed (+ IObservationEvidenceCollector, IObservationUnitProvider, Phase 2)
+│   └── Engine/
+│       ├── ResolutionEngine.cs              Completed (delegates to SequentialSampler, Phase 2)
+│       └── SequentialSampler.cs             Completed (§5.5, Phase 2) — entity-agnostic, no Emby/MusicBrainz-specific knowledge
 ├── Sources/Emby/
 │   ├── EmbyArtist.cs                       Completed
 │   ├── EmbyArtistProvider.cs               Completed (ArtistFilter split fixed for netstandard2.0 compat, 2026-07-10)
+│   ├── EmbyTrackObservationUnit.cs          Completed (new, Phase 2)
+│   ├── EmbyArtistObservationUnitProvider.cs Completed (new, Phase 2) — 2 of §5.5.1's 4 distance-seeking rules implemented against real data; other 2 need data EmbyTrackCredit doesn't carry yet
 │   └── IEmbyLibraryReader.cs               Placeholder (interface only — real ILibraryManager impl pending, needs live Emby SDK)
 ├── Resolvers/MusicBrainz/
 │   ├── Client/IMusicBrainzApiClient.cs     Placeholder (interface only — real HTTP impl pending, needs live network)
 │   ├── Strategies/AnchoredRecordingStrategy.cs   Completed (Strategy A)
-│   ├── Strategies/SoftBucketStrategy.cs          Completed (Strategy B)
-│   ├── Strategies/AnchorByAssociationStrategy.cs  Not started (Strategy C, Phase 3)
-│   ├── Evidence/NameDistanceEvidenceCollector.cs       Completed
-│   ├── Evidence/WorkRelationshipEvidenceCollector.cs   Completed
+│   ├── Strategies/SoftBucketStrategy.cs          Completed (Strategy B) — candidate generation is entirely recording/performer-credit driven; this is why composer-only artists can't be resolved yet, see Evidence Log 2026-07-11
+│   ├── Strategies/AnchorByAssociationStrategy.cs  Not started (Strategy C, Phase 3) — confirmed necessary, not just planned, by real-world testing (Gus Black, Del Serino), 2026-07-11
+│   ├── Evidence/NameDistanceEvidenceCollector.cs       Completed — verified against real-world naming variants (Florence + the Machine), 2026-07-11
+│   ├── Evidence/WorkRelationshipEvidenceCollector.cs   Completed — converted to IObservationEvidenceCollector, Phase 2
 │   ├── Evidence/AliasEvidenceCollector.cs              Not started (Phase 2)
-│   ├── Evidence/RecordingRelationshipEvidenceCollector.cs  Not started (Phase 2)
+│   ├── Evidence/RecordingRelationshipEvidenceCollector.cs  Not started (Phase 2) — confirmed necessary by real-world testing (Queen), 2026-07-11
 │   ├── Evidence/AlbumMatchEvidenceCollector.cs         Not started (Phase 2)
 │   └── Evidence/CorroborationTierEvidenceCollector.cs  Not started (Phase 2)
 ├── Scoring/
-│   ├── SimpleWeightedSumScorer.cs          Completed (Phase 1 stand-in for BayesianBeliefScorer)
+│   ├── SimpleWeightedSumScorer.cs          Completed (Phase 1 stand-in for BayesianBeliefScorer; applies RoleWeights multiplier as of Phase 2, currently neutral)
 │   ├── ThresholdDecisionGate.cs            Completed
 │   ├── EvidenceTranslator.cs               Not started (Phase 2, §5.6 plain-language layer)
 │   └── JointEvidenceRules.cs                Not started (Phase 2)
@@ -241,7 +374,7 @@ MetadataHealthCheck.v2/                                    (real plugin source -
 SQLitePCLPrettyShim/          SANDBOX-ONLY, not shipped — API-compatible test double for SQLitePCL.pretty.core (AI-assisted dev use only, not needed with real NuGet access)
 SandboxValidation/            SANDBOX-ONLY, not shipped — compiles MetadataHealthCheck.v2's real source against the shim (AI-assisted dev use only)
 SmokeTest/                    SANDBOX-ONLY, not shipped — manual-assertion console harness (xUnit blocked in AI sandbox, see Evidence Log). Real developer use: references MetadataHealthCheck.v2.csproj directly with real NuGet packages, using InMemoryMatchRepository.cs in place of real SQLite persistence.
-├── Program.cs                              Completed — verified against real build 2026-07-10
+├── Program.cs                              Completed — verified against real build 2026-07-10; 34 assertions (up from 8) verified against real build 2026-07-11 after Phase 2 additions
 └── InMemoryMatchRepository.cs              Completed (added 2026-07-10) — fake IMatchRepository, bypasses unresolved real-SQLite provider version issue
 ```
 
@@ -309,3 +442,69 @@ Learnings, insights, and observations from the project.
   fixture reader modeling a synchronous in-memory list is a faithful stand-in
   shape for the real thing, unlike the MusicBrainz client which really does
   need network I/O.
+- **§5.5's pseudocode read ambiguously on a load-bearing point**: whether the
+  sampler runs one candidate to completion in isolation, or evaluates all
+  live candidates jointly per round. §18's own worked example only makes
+  sense under the joint reading (the margin check needs every candidate at
+  the same observation count). Confirmed this reading before building
+  `SequentialSampler.cs`, not after — an isolated-per-candidate
+  implementation would have been a plausible but wrong reading of the
+  prose. Spec §5.5 updated to state this explicitly.
+- **RoleWeights decision (confirmed, not to be relitigated)**: composer-tier
+  evidence is NOT weighted down relative to AlbumArtist/Artist. Rationale:
+  the difficulty with composer-only artists is entirely in generating them
+  as a *candidate* at all (see next entry), not in the evidence being
+  weaker once genuinely found — a real composer credit is exactly as
+  strong a signal as a real AlbumArtist credit. `RoleWeights` stays neutral
+  (1.0) across all three tiers by design, not as a placeholder awaiting
+  tuning.
+- **Major structural finding, confirmed by real-world testing (Gus Black,
+  Del Serino, 2026-07-11): composer-only artists cannot be resolved as
+  candidates at all today, regardless of name-matching or alias support.**
+  Both `AnchoredRecordingStrategy` and `SoftBucketStrategy` generate
+  candidates exclusively from a recording's performer credit
+  (`MbRecordingResult.ArtistMbid`) — never from a work-relationship.
+  `WorkRelationshipEvidenceCollector` only *adds evidence to* a candidate
+  that already exists via that performer-credit path; it cannot create one
+  from a composer/writer credit. Concretely: for an artist who is a pure
+  composer with no recordings of their own as a performer, the only
+  candidate ever generated from one of their composer-credited tracks is
+  the track's real *performer* — a different person entirely. Confirmed
+  end-to-end: Gus Black's "Borrowed Time" track correctly generates "A
+  Fine Frenzy" as its sole candidate (the real performer), and Del
+  Serino's Adele cover correctly generates "Adele". Both spurious
+  candidates are then correctly rejected by `NameDistanceEvidenceCollector`
+  (Poor match in both cases) rather than false-accepted — the existing
+  safety net works — but Gus Black and Del Serino themselves are never
+  even considered. This is exactly what Phase 3's Strategy C
+  ("borrowed anchor") is for, and real-world testing has now confirmed
+  it's a load-bearing gap, not a theoretical one. Del Serino's specific
+  alias-resolution problem is a second, separate barrier stacked on top
+  of this one — not independently testable until this first gap closes.
+- **Second real-world gap confirmed: no recording/performer-tier evidence
+  collector exists yet** (2026-07-11, Queen/"Bohemian Rhapsody" case).
+  `WorkRelationshipEvidenceCollector` only recognizes writer/composer/
+  lyricist/librettist relationships — a performer-only band credit
+  correctly finds nothing, regardless of how well-known the artist is or
+  how unusual the album metadata is (tested against a real non-canonical
+  compilation, "Top 2000 (Radio 2)", to rule out album-related noise as
+  the cause). This is `RecordingRelationshipEvidenceCollector`'s job,
+  still not started.
+- **ScoringConfig decision (confirmed, not to be relitigated)**: stays a
+  plain C# class with hardcoded defaults, developer-edited and shipped via
+  rebuild — not a database-backed, versioned, grid-editable settings page.
+  Door deliberately left open to surface a subset of these values in a
+  real settings UI once this ships as an actual Emby plugin with its own
+  config-page infrastructure to ride on (§13) — at that point it's a small
+  UI addition on existing infrastructure, not bespoke machinery built for
+  this alone. Spec §10.3 updated to reflect this.
+- **NameDistanceEvidenceCollector validated against real-world naming
+  variance** (2026-07-11): confirmed via MusicBrainz's own listing that its
+  sort-name for "Florence + the Machine" is literally "Florence and the
+  Machine" — "and"/"&" aren't tagging errors, they're how MB itself refers
+  to the artist. Three real-world taggings ("Florence and the machine",
+  "Florence & The Machine", "Florence + The machine") classified Close,
+  NearExact, NearExact respectively, matching hand-computed Levenshtein
+  values exactly before the run confirmed them. No alias collector needed
+  for this particular case — the existing distance metric already handles
+  it.

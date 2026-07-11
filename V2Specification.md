@@ -251,6 +251,8 @@ if no bound was crossed after all buckets/budgets exhausted:
 
 `BucketCeiling` (default: AlbumArtist 3, Artist 4, Composer 6) is a sampling **budget**, not a target — the actual stop can occur anywhere from the first observation up to the ceiling.
 
+**Clarification (confirmed during Phase 2 planning — the pseudocode above reads ambiguously on this point):** the loop above is written per-candidate for readability, but the sampler evaluates every live candidate **jointly, one round at a time** — not one candidate's loop run to completion in isolation before moving to the next. This is required by §5.7's margin check, which compares the top candidate's cumulative LLR against the runner-up's own cumulative LLR: that comparison is only meaningful if every live candidate has been given the same observations at the same point. Concretely: draw one observation, score it against *every* live candidate, check the decision gate (top crosses threshold *and* margin over runner-up, or all candidates at/below reject), and only then draw the next observation if neither condition is met. §18's worked example is written this way for exactly this reason — the same observation is checked against both X and Y before the margin is evaluated.
+
 #### 5.5.1 Distance-Seeking Sampling Order
 
 Within a bucket, rank available tracks before drawing the next observation, in this priority order:
@@ -539,9 +541,13 @@ DeveloperConfig
 
 Applied inside `EmbyArtistProvider.GetAll()` (§11.3) — if `ArtistFilter` is non-empty, return only matching entities. No other pipeline component needs to know a filter is active.
 
-### 10.3 ScoringConfig (developer page, grid-editable — §14.3)
+### 10.3 ScoringConfig (code-based for now; UI-editable grid deferred)
 
-Row-shaped tuning data, stored as key-value rows in `scoring_config_overrides` (§9.1), not a serialized blob — every value from §6 is one row, defaulting to the values listed there if absent. Every save increments `scoring_config_version`, and every `match_result`/`score` row stamps the version active at decision time, so past decisions remain attributable to the weights that produced them even after further tuning.
+**Decision (confirmed during Phase 2 planning, superseding this section's original framing):** `ScoringConfig` stays a plain C# class with hardcoded default values, edited by a developer and shipped via rebuild — not a database-backed, grid-editable settings page. The original motivation for a live-editable grid still holds in principle (thresholds and weights need tuning to get good results, and that tuning shouldn't require touching the core pipeline logic) — but the knobs are for the development/tuning phase, and most are expected to get removed or hardcoded down once calibration settles them, not to remain a permanent user-facing surface.
+
+**Door intentionally left open**: once this is packaged as a real Emby plugin with its own UI environment (§13), surfacing some subset of these values in a proper settings page becomes a natural, low-effort addition on top of the plugin's own config UI conventions — at that point it's a UI feature riding on infrastructure that already exists for other reasons, not a bespoke grid/versioning system built just for this. Revisit then; don't build the `scoring_config_overrides` table/versioning machinery speculatively now.
+
+Row-shaped tuning data, one entry per §6 value, defaulting to the values listed there if absent:
 
 ```
 ScoringConfig
@@ -642,6 +648,10 @@ MetadataHealthCheck.v2/
 
 None of these mention Emby, MusicBrainz, Artist, or Album by name — that constraint is what makes §11.4's extensibility requirement checkable rather than aspirational.
 
+**Note**: the signatures below have been aligned to what Phase 1's actual implementation already uses (`IBeliefScorer.Score` takes `ScoringConfig`; `IDecisionGate.Decide` takes `sourceSystem`/`sourceId` to build the `MatchResult`) — both are small, evident gap-fills discovered during implementation, documented in the Project Log's Evidence section rather than left as an undocumented drift from this spec.
+
+**Addition (Phase 2, confirmed during Sequential Sampler planning):** `IObservationUnit`, `IObservationEvidenceCollector`, and `IObservationUnitProvider` support §5.5's per-observation sampling generically. `IObservationUnit` is deliberately opaque to `Core` — for the Artist/MusicBrainz case a unit is one track and `BucketKey` is "AlbumArtist"/"Artist"/"Composer"; a future entity type with no natural role/bucket concept (§11.4's own Album example) can either use a single constant `BucketKey` or simply not implement `IObservationUnitProvider` at all (`IResolverPlugin.ObservationUnitProvider` is nullable for exactly this reason, and `ObservationEvidenceCollectors` can be an empty list). When both are absent, the Sequential Sampler scores from static evidence alone — identical to the pre-Phase-2 behavior.
+
 ```csharp
 namespace MetadataHealthCheck.v2.Core.Interfaces
 {
@@ -663,20 +673,30 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         IEnumerable<Candidate> GenerateCandidates(TSourceEntity source, ResolutionContext context);
     }
 
+    // Static, candidate-pair-level evidence (§5.4) -- computed once per candidate,
+    // e.g. name similarity. Called once, not per observation.
     public interface IEvidenceCollector<TSourceEntity> where TSourceEntity : ISourceEntity
     {
         string EvidenceType { get; }
-        EvidenceRecord Collect(TSourceEntity source, Candidate candidate, ResolutionContext context);
+        EvidenceRecord? Collect(TSourceEntity source, Candidate candidate, ResolutionContext context);
+    }
+
+    // Per-observation evidence (§5.4) -- re-run once per sampled IObservationUnit,
+    // as many times as the Sequential Sampler (§5.5) draws units.
+    public interface IObservationEvidenceCollector<TSourceEntity> where TSourceEntity : ISourceEntity
+    {
+        string EvidenceType { get; }
+        EvidenceRecord? Collect(TSourceEntity source, Candidate candidate, IObservationUnit unit, ResolutionContext context);
     }
 
     public interface IBeliefScorer
     {
-        ScoredCandidate Score(Candidate candidate, IEnumerable<EvidenceRecord> evidenceSoFar);
+        ScoredCandidate Score(Candidate candidate, IEnumerable<EvidenceRecord> evidenceSoFar, ScoringConfig config);
     }
 
     public interface IDecisionGate
     {
-        MatchResult Decide(IEnumerable<ScoredCandidate> rankedCandidates, ScoringConfig config);
+        MatchResult Decide(IEnumerable<ScoredCandidate> rankedCandidates, ScoringConfig config, string sourceSystem, string sourceId);
     }
 
     // The unit of extensibility for new target systems/entity types: one implementation
@@ -687,6 +707,8 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         string TargetEntityType { get; }
         IEnumerable<ICandidateGenerationStrategy<TSourceEntity>> Strategies { get; }
         IEnumerable<IEvidenceCollector<TSourceEntity>> EvidenceCollectors { get; }
+        IEnumerable<IObservationEvidenceCollector<TSourceEntity>> ObservationEvidenceCollectors { get; }  // empty if none
+        IObservationUnitProvider<TSourceEntity>? ObservationUnitProvider { get; }                          // null if no observation concept
         IBeliefScorer Scorer { get; }
         IDecisionGate DecisionGate { get; }
     }
@@ -703,6 +725,28 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         void SaveEvidence(EvidenceRecord evidence);
         void SaveMatchResult(MatchResult result);
         MatchResult? GetExisting(string sourceSystem, string sourceId, string targetSystem);
+    }
+}
+```
+
+`IObservationUnit` itself lives in `Core/Model`, alongside the other model types (§4):
+
+```csharp
+namespace MetadataHealthCheck.v2.Core.Model
+{
+    public interface IObservationUnit
+    {
+        string BucketKey { get; }
+    }
+
+    // Optional -- entity types with no natural observation/role concept (§11.4's
+    // Album example) simply don't provide one.
+    public interface IObservationUnitProvider<TSourceEntity> where TSourceEntity : ISourceEntity
+    {
+        // Outer sequence: buckets, in priority sampling order (e.g. AlbumArtist, Artist,
+        // Composer, highest signal first). Inner sequence: units within that bucket,
+        // already in distance-seeking sample order (§5.5.1).
+        IEnumerable<IEnumerable<IObservationUnit>> GetOrderedBuckets(TSourceEntity source, ResolutionContext context);
     }
 }
 ```

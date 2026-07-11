@@ -42,6 +42,9 @@
 	</ItemGroup>
 
 	<ItemGroup>
+		<None Update="V2Specification - v0.1.md">
+		  <SubType>Component</SubType>
+		</None>
 		<None Update="V2Specification.md">
 			<SubType>Component</SubType>
 		</None>
