@@ -18,6 +18,12 @@ namespace MetadataHealthCheck.v2.Sources.Emby
     /// artist happens to be credited on. Left as a documented gap rather than
     /// faked with a misleading proxy -- revisit once EmbyLibraryReader's E2 read
     /// is widened to carry that data (§21 phase 2/3).
+    ///
+    /// CONFIRMED 2026-07-12 (not yet implemented): this is exactly the gap the
+    /// "widen EmbyTrackCredit" coding checklist in the Project Log addresses --
+    /// rule 2 becomes straightforwardly implementable once done; rule 4 only
+    /// partially (still needs a true per-album track count beyond what that
+    /// checklist supplies alone).
     /// </summary>
     public class EmbyArtistObservationUnitProvider : IObservationUnitProvider<EmbyArtist>
     {
