@@ -5,11 +5,75 @@ Capture directives here
 - v2 runs against its own SQLite database/config, entirely decoupled from the existing prototype (§19.1) — confirmed respected throughout.
 - Emby plugin framework is netstandard2.0. SQLite approach is settled as matching the patterns used in the existing Emby plugin Emby.AutoOrganize (https://github.com/MediaBrowser/Emby.AutoOrganize) — confirmed by cloning and reading that repo directly, not re-derived independently.
 - Do not guess Emby plugin framework details from the spec's prose description of it; read the actual reference source. The spec is a summary, not a substitute for the real source.
+- **SETTLED 2026-07-12: candidate generation is artist-search-first, not recording-search-first.** Confirmed after a design review against real MusicBrainz data (see Evidence Log, 2026-07-12). §5.3 in `V2Specification.md` has been rewritten as the authoritative design; the old recording-first approach is preserved in the spec's Appendix A for reference only, in case a fundamental flaw in this direction is found later — it is not a live alternative to build against otherwise. **The code has NOT been updated to match yet** — `SoftBucketStrategy.cs` still implements the old, superseded recording-first approach as of this writing. See the "Coding checklist: artist-search-first candidate generation" entry below (2026-07-12) for the concrete, itemized list of what changing this involves — do not re-derive this from prose alone; the checklist is meant to be picked up directly, including by a fresh session with no other context.
+
+
+Coding checklist: artist-search-first candidate generation (settled 2026-07-12, NOT YET IMPLEMENTED)
+This is a concrete, itemized to-do list, not a summary — intended to be actionable by a fresh session with no other context. Read §5.3 and Appendix A of V2Specification.md first for the "why"; this is the "what."
+
+1. **`Resolvers/MusicBrainz/Client/IMusicBrainzApiClient.cs` — model gap, confirmed real, needs fixing first:**
+   `MbArtistResult` currently has NO `Aliases` field at all (only `Mbid`, `Name`, `Disambiguation`, `Score`). The real MusicBrainz `ws/2/artist` search response DOES return aliases inline (confirmed 2026-07-12 against real data — an `aliases` array per artist, no extra `inc=` needed). Add an `Aliases` list (or similar) to `MbArtistResult` before anything downstream can use it.
+2. **`Fixtures/FixtureMusicBrainzApiClient.cs` — `SearchArtist` is currently dead-code-shaped:** it exists but nothing calls it, and its returned data (if any) has never been exercised by a real strategy. Once Strategy B is rewritten (below), every existing SmokeTest fixture case (Sarah Vaughan/§18, Gus Black, Queen, Florence ×3, Del Serino) will need real, meaningful `SearchArtist` fixture data added — including realistic near-miss/rival entries where the real-world case actually has one (e.g. nothing needed for Sarah Vaughan, since her real near-collisions don't clear a name-closeness bar anyway — see §18's corrected worked example).
+3. **`Resolvers/MusicBrainz/Strategies/SoftBucketStrategy.cs` — the actual rework.** Needs to change from "search recordings, harvest every distinct ArtistMbid" to:
+   a. Call `SearchArtist(source.DisplayName)` (§7.2 C1) to get a candidate-artist pool with names + aliases.
+   b. Admit a candidate only if its name or an alias is a sufficiently close match to `source.DisplayName` — **this specific closeness test/threshold is an open sub-decision, not yet made.** Options include reusing `NameDistanceEvidenceCollector`'s existing Levenshtein-based logic (possible code reuse, not yet evaluated for fit) or a separate, simpler bar. Don't invent this unilaterally without flagging the choice.
+   c. For each admitted candidate, confirm via the existing `RecordingLookup` (`Resolvers/MusicBrainz/Evidence/RecordingLookup.cs`, already built for evidence collection) as the corroborating signal — **reuse this class, don't build a second parallel recording-lookup implementation.**
+   d. Naming: is `SoftBucketStrategy.cs`'s name/class still appropriate once its actual behavior is artist-search-first rather than a "soft," broad recording fallback? Open naming question, not decided — flagging rather than renaming unilaterally.
+4. **`ScoringConfig`/`Core/Model/ScoringConfig.cs` — `CandidateGeneration.ArtistCandidateMinScore` (§5.4/§10.3) needs an actual, concrete implementation.** It's named in the spec today but not implemented anywhere in code. This is the real admission bar from step 3b above, whatever its final shape.
+5. **Relationship to `AliasEvidenceCollector` (still not-started) — clarify before building, don't conflate:** candidate-generation-time alias checking (step 3b, an inclusion/admission decision) and `AliasEvidenceCollector`'s job (a per-candidate evidence *contribution* once a candidate already exists, §6.1's "Alias match, alone" / "Alias + recording match" LLR values) are complementary, not duplicative — they answer different questions ("should this candidate exist at all" vs. "how much does its alias match contribute to confidence"). Worth stating explicitly so they don't get built as the same thing by accident.
+6. **Expect further `SmokeTest` assertion churn once this lands**, the same way Phase 2's evidence-collector work already changed several assertions twice — a single-candidate case (e.g. Queen, Gus Black) may no longer even generate a "wrong" candidate at all once admission happens before generation, which changes what the test can assert about candidate count/log lines, not just about final status.
 
 
 Build Log
 What is done, what is in progress, and what is planned for the project.
 
+
+Status as of 2026-07-12 (design review)
+
+
+Design review pass against real MusicBrainz data, followed by a settled
+architecture decision — no code changed yet, but a firm direction is now
+recorded (not just findings). Confirmed the §18/Sarah Vaughan fixture case
+was entirely invented rather than grounded in real MB data (unlike Gus
+Black/Queen/Florence) — §18 has since been rewritten using real data and
+the new confirmed flow (see below). **Candidate generation is now settled
+as artist-search-first, not recording-search-first** — today's code
+(`SoftBucketStrategy.cs`) admits every distinct ArtistMbid a recording
+search returns with no upfront name/alias gate and no relevance-score
+filter, despite one being named in the spec; this is now confirmed as the
+wrong direction and the fix (search by artist name+aliases first, use
+recording-presence as confirmation) is settled, not just proposed — see
+the Directives section and coding checklist at the top of this file for
+the concrete, itemized implementation TODO, and V2Specification.md §5.3 +
+Appendix A for the corrected/superseded design text. **Not yet
+implemented in code.** Investigated a real same-name-artist collision
+(Nirvana, US grunge vs. UK psych-pop) and found the current per-round
+joint-candidate-evaluation design already handles it correctly, given
+disjoint real catalogs — this part of the design needs no change.
+Identified one real, deliberately-deferred residual risk: a generic track
+title on a generic album title could survive the fallback ladder and pick
+up genuine (not spurious) weak corroboration against the wrong same-named
+candidate — proposed future fix recorded in §6.1, not built, no action
+needed now.
+
+Status as of 2026-07-12
+
+
+Album-match precursor, corroboration-tier, and recording-relationship
+evidence collectors built and integrated — closes out this Phase 2
+increment's stated goal of reproducing §18's worked example, and closes
+the Queen/performer-tier gap confirmed by real-world testing on
+2026-07-11. A shared, memoized per-track recording lookup
+(`RecordingLookup.cs`, new) replaces what would otherwise have been three
+independent MusicBrainz recording searches per sampler round for the same
+(candidate, track) pair — `WorkRelationshipEvidenceCollector` refactored
+onto it, `RecordingRelationshipEvidenceCollector` and
+`CorroborationTierEvidenceCollector` built onto it from the start. All 33
+SmokeTest assertions pass, including 5 pre-existing assertions updated to
+reflect richer evidence now correctly resolving cases that previously sat
+at `needs_review` (Queen, and all three Florence + the Machine naming
+variants) — see Evidence Log for the full reasoning on why those changed
+outcomes are correct, not regressions.
 
 Status as of 2026-07-11
 
@@ -318,12 +382,140 @@ before committing to the shape.
 All 34 assertions passed in this unit.
 
 **Not yet done, still Phase 2 scope:** `AliasEvidenceCollector`,
-`RecordingRelationshipEvidenceCollector`, `AlbumMatchEvidenceCollector`,
-`CorroborationTierEvidenceCollector`, `BayesianBeliefScorer` (still
-`SimpleWeightedSumScorer` standing in), `EvidenceTranslator`,
-`JointEvidenceRules`, `ApiCacheRepository`. Reproducing §18's worked
-example exactly still depends on the album-match/corroboration-tier
-collectors above.
+`BayesianBeliefScorer` (still `SimpleWeightedSumScorer` standing in, now
+also handling the one §5.2 supersession rule as a narrow special case —
+see next entry), `EvidenceTranslator`, `JointEvidenceRules` (the general
+`JointEvidencePairs` mechanism — not yet needed since only one specific
+pair, §5.2's supersession, has been implemented so far), `ApiCacheRepository`
+(deliberately deferred — see Evidence Log). §18's worked example is now
+reproduced structurally (auto-accept, correct candidate, single
+observation, correct margin), though not with identical absolute LLR
+numbers to the spec's own illustrative math — see Evidence Log.
+
+## Phase 2 continued — Album-Match / Corroboration-Tier / Recording-Relationship evidence — this increment DONE, tested 2026-07-12
+
+Scope of this increment: the three remaining evidence collectors flagged
+as "not yet done" above, motivated directly by the prior increment's two
+real-world findings (Queen's missing performer-tier path; §18's
+reproduction depending on album-match/corroboration-tier). `AliasEvidenceCollector`
+and `BayesianBeliefScorer` remain out of scope — see updated "not yet
+done" list below.
+
+**Design alignment reached before coding (see Evidence Log for full
+reasoning on each):**
+- A unified per-track recording lookup (fallback ladder: track+artist+album
+  → track+album → track alone) replaces independent `SearchRecording` calls
+  per collector — confirmed before building any of the three new collectors,
+  not after finding the duplication by accident.
+- `api_cache`/`ApiCacheRepository` deliberately deferred rather than built
+  alongside this — building the cache key shape before the real lookup
+  shape was settled would have meant guessing.
+- §5.2's supersession rule resolved at scoring time, in
+  `SimpleWeightedSumScorer`, not at collection time as first proposed —
+  corrected once `SequentialSampler.cs`'s actual Step 1/Step 2 ordering was
+  re-examined closely (the album-match precursor always runs before any
+  per-track observation exists, so it can never itself know whether a later
+  Tier 1 observation will arrive for the same album).
+
+**What was built:**
+- Resolvers/MusicBrainz/Evidence/`RecordingLookup.cs` (new) — shared,
+  memoized per-(candidate, track) recording lookup implementing the
+  fallback ladder above. Records which rung produced a hit (`RungReached`,
+  diagnostic-only for now — not yet exercised by any fixture case, since
+  every existing SearchRecording branch matches on track title alone
+  regardless of the artist-name parameter; an honest coverage gap, not
+  claimed as validated).
+- Resolvers/MusicBrainz/Client/`IMusicBrainzApiClient.cs` — `SearchRecording`
+  signature extended with an `artistName` parameter to support the ladder.
+  `AnchoredRecordingStrategy.cs`/`SoftBucketStrategy.cs` call sites updated
+  to match (both pass `null` for now — widening candidate-generation
+  strategies onto the ladder themselves is follow-up work, out of this
+  evidence-collector-focused unit's scope).
+- Resolvers/MusicBrainz/Evidence/`WorkRelationshipEvidenceCollector.cs` —
+  refactored onto `RecordingLookup` instead of its own direct
+  `SearchRecording` call (previously flagged in its own comments as a
+  "revisit if this proves too indirect" stand-in — now revisited).
+- Resolvers/MusicBrainz/Evidence/`RecordingRelationshipEvidenceCollector.cs`
+  (new) — recording-level relationships (producer/arranger), sourced from
+  the same underlying call as `WorkRelationshipEvidenceCollector`'s
+  work-rels, filtered differently (§5.4/§7.2 C5).
+- Resolvers/MusicBrainz/Evidence/`CorroborationTierEvidenceCollector.cs`
+  (new) — Tier 1/2/3 per §6.3, using `MbRecordingResult.TrackTitleMatches`/
+  `ReleaseTitleMatches`, already present on the fixture's model.
+- Resolvers/MusicBrainz/Evidence/`AlbumMatchEvidenceCollector.cs` (new) —
+  static album-match precursor per §5.2, once per candidate.
+- Core/Model/`ScoringConfig.cs` — added `AlbumMatch.Distinctive/Generic`,
+  `CorroborationTier.Tier1/2/3`, `RecordingRelationship.Producer/Arranger`
+  evidence weights per §6.1.
+- Scoring/`SimpleWeightedSumScorer.cs` — added the §5.2 supersession
+  filter: a `CorroborationTier.Tier1` record for a given `AlbumId` drops
+  any `AlbumMatch.*` record sharing that same `AlbumId` before summing.
+- Resolvers/MusicBrainz/`MusicBrainzArtistResolverPlugin.cs` — wires all
+  three new collectors and the shared `RecordingLookup` instance.
+- Fixtures/`FixtureMusicBrainzApiClient.cs` — `SearchRecording` signature
+  updated to match; added a real-world producer credit for Queen
+  ("Bohemian Rhapsody" co-produced by Roy Thomas Baker and Queen
+  themselves, externally corroborated) giving `RecordingRelationshipEvidenceCollector`
+  a genuine case to fire on; added a synthetic Tier-3-only recording
+  ("A Loosely Related Track") needed to keep the multi-observation sampler
+  test meaningful once static evidence + any real corroboration started
+  crossing the accept threshold on the first useful observation alone.
+- SandboxValidation/`SandboxValidation.csproj` — **pre-existing bug fixed,
+  unrelated to this unit's actual scope**: its `Compile Include` glob
+  (`../MetadataHealthCheck.v2/**/*.cs`) assumed source lived in a nested
+  subfolder that doesn't exist in the current repo layout (source is at
+  the repo root, sibling to `SandboxValidation/`) — matched zero files.
+  Fixed to include the real sibling folders explicitly. Also excludes
+  `Storage/Sqlite/*` for now (needs real SQLitePCL.pretty.core API surface
+  the local shim doesn't implement — pre-existing gap, not exercised by
+  `SmokeTest` either way since it uses `InMemoryMatchRepository`).
+
+**Testing performed (SmokeTest console app, `dotnet run`):**
+1. §18 worked-example reproduction (the existing Phase 1 fixture case IS
+   §18's exact setup): now resolves with `AlbumMatch`/`CorroborationTier`
+   evidence contributing as designed. Structurally matches §18 (auto-accept,
+   correct candidate, single observation, margin 7.0 nats matching §18's
+   stated figure). Absolute per-candidate LLR values do NOT match §18's own
+   illustrative math — see Evidence Log for the two reasons found, both
+   flagged rather than silently forced to match. PASS (2 new assertions)
+2. Multi-track adaptive stop (pre-existing test, fixture updated): needed
+   a genuinely weak (Tier 3) first observation to still require 2 draws,
+   since almost any real corroboration now crosses the accept threshold
+   on the first useful observation given the higher static baseline
+   (name-similarity + album-match precursor). PASS (4 assertions,
+   unchanged pass/fail shape, updated fixture)
+3. Queen real-world case (pre-existing test, assertions updated): now
+   resolves `auto_accept` via the new producer credit
+   (`RecordingRelationship.Producer`, +0.8) plus `CorroborationTier.Tier2`
+   (+1.8) on top of existing name-similarity (+1.5) = 4.1 nats, crossing
+   the +4.0 threshold. This is the fix this fixture case was built to
+   motivate, not a regression. PASS (2 assertions, updated from
+   `needs_review` to `auto_accept`)
+4. Florence + the Machine naming variants (pre-existing test, assertions
+   updated): all three now resolve `auto_accept` — `CorroborationTier.Tier1`
+   correctly fires for the genuine "Dog Days Are Over"/"Lungs" full-triple
+   match, which didn't exist as an evidence type when this test was
+   originally written to isolate pure name-matching. The name-similarity
+   bucket assertions (the original point of the test) are unchanged and
+   still pass. PASS (9 assertions, 3 of 9 updated from `needs_review` to
+   `auto_accept`)
+5. Gus Black, bucket escalation, `BucketCeiling` enforcement, full
+   exhaustion, Del Serino: unaffected by this increment's changes, all
+   still pass unchanged.
+
+All 33 assertions passed in this unit (down from 34 — the multi-track
+adaptive-stop test's fixture was replaced, not added to; assertion count
+per scenario is otherwise unchanged or increased).
+
+**Not yet done, still Phase 2 scope:** `AliasEvidenceCollector`,
+`BayesianBeliefScorer` (its remaining job beyond what
+`SimpleWeightedSumScorer` now covers is the *general* `JointEvidencePairs`
+mechanism — alias+recording joint evidence specifically needs
+`AliasEvidenceCollector` to exist first), `EvidenceTranslator`,
+`ApiCacheRepository` (deliberately deferred, see Evidence Log). The
+tier→rung-priority hypothesis in `RecordingLookup.cs`'s own comments
+(which name field leads the ladder, by tier) is unverified — flagged
+in-file, not assumed correct.
 
 ## Phase 3–5
 Not started.
@@ -344,21 +536,22 @@ MetadataHealthCheck.v2/                                    (real plugin source -
 │   ├── EmbyArtistObservationUnitProvider.cs Completed (new, Phase 2) — 2 of §5.5.1's 4 distance-seeking rules implemented against real data; other 2 need data EmbyTrackCredit doesn't carry yet
 │   └── IEmbyLibraryReader.cs               Placeholder (interface only — real ILibraryManager impl pending, needs live Emby SDK)
 ├── Resolvers/MusicBrainz/
-│   ├── Client/IMusicBrainzApiClient.cs     Placeholder (interface only — real HTTP impl pending, needs live network)
+│   ├── Client/IMusicBrainzApiClient.cs     Placeholder (interface only — real HTTP impl pending, needs live network; SearchRecording extended with artistName param, Phase 2 cont'd)
 │   ├── Strategies/AnchoredRecordingStrategy.cs   Completed (Strategy A)
-│   ├── Strategies/SoftBucketStrategy.cs          Completed (Strategy B) — candidate generation is entirely recording/performer-credit driven; this is why composer-only artists can't be resolved yet, see Evidence Log 2026-07-11
+│   ├── Strategies/SoftBucketStrategy.cs          Completed for the superseded recording-first design (Strategy B) — **PENDING REWORK, not yet done**: artist-search-first is the settled direction as of 2026-07-12 (see Directives + coding checklist at top of this file, and V2Specification.md §5.3/Appendix A); this file still implements the old approach
 │   ├── Strategies/AnchorByAssociationStrategy.cs  Not started (Strategy C, Phase 3) — confirmed necessary, not just planned, by real-world testing (Gus Black, Del Serino), 2026-07-11
+│   ├── Evidence/RecordingLookup.cs                     Completed (new, Phase 2 cont'd) — shared memoized per-(candidate,track) recording lookup, fallback ladder; RungReached tracked but not yet exercised by any fixture
 │   ├── Evidence/NameDistanceEvidenceCollector.cs       Completed — verified against real-world naming variants (Florence + the Machine), 2026-07-11
-│   ├── Evidence/WorkRelationshipEvidenceCollector.cs   Completed — converted to IObservationEvidenceCollector, Phase 2
+│   ├── Evidence/WorkRelationshipEvidenceCollector.cs   Completed — converted to IObservationEvidenceCollector, Phase 2; refactored onto RecordingLookup, Phase 2 cont'd
 │   ├── Evidence/AliasEvidenceCollector.cs              Not started (Phase 2)
-│   ├── Evidence/RecordingRelationshipEvidenceCollector.cs  Not started (Phase 2) — confirmed necessary by real-world testing (Queen), 2026-07-11
-│   ├── Evidence/AlbumMatchEvidenceCollector.cs         Not started (Phase 2)
-│   └── Evidence/CorroborationTierEvidenceCollector.cs  Not started (Phase 2)
+│   ├── Evidence/RecordingRelationshipEvidenceCollector.cs  Completed (new, Phase 2 cont'd) — verified against real-world case (Queen/"Bohemian Rhapsody" producer credit), 2026-07-12
+│   ├── Evidence/AlbumMatchEvidenceCollector.cs         Completed (new, Phase 2 cont'd) — static precursor, §5.2
+│   └── Evidence/CorroborationTierEvidenceCollector.cs  Completed (new, Phase 2 cont'd) — Tier 1/2/3, §6.3
 ├── Scoring/
-│   ├── SimpleWeightedSumScorer.cs          Completed (Phase 1 stand-in for BayesianBeliefScorer; applies RoleWeights multiplier as of Phase 2, currently neutral)
+│   ├── SimpleWeightedSumScorer.cs          Completed (Phase 1 stand-in for BayesianBeliefScorer; applies RoleWeights multiplier as of Phase 2, currently neutral; applies §5.2 supersession filter as of Phase 2 cont'd — one narrow joint-evidence rule, not the general mechanism below)
 │   ├── ThresholdDecisionGate.cs            Completed
 │   ├── EvidenceTranslator.cs               Not started (Phase 2, §5.6 plain-language layer)
-│   └── JointEvidenceRules.cs                Not started (Phase 2)
+│   └── JointEvidenceRules.cs                Not started (Phase 2) — general JointEvidencePairs mechanism; §5.2's specific supersession case already handled ahead of this, in SimpleWeightedSumScorer
 ├── Storage/
 │   ├── Sqlite/BaseSqliteRepository.cs      Completed — ported from Emby.AutoOrganize's own source (Phase 1b)
 │   ├── Sqlite/SqliteExtensions.cs          Completed — ported from Emby.AutoOrganize's own Data/SqliteExtensions.cs (added 2026-07-10; was missing, not part of the real SQLitePCL.pretty.core package)
@@ -372,9 +565,9 @@ MetadataHealthCheck.v2/                                    (real plugin source -
 └── Diagnostics/StructuredLogger.cs           Completed (Console sink; real ILogger sink pending host access)
 
 SQLitePCLPrettyShim/          SANDBOX-ONLY, not shipped — API-compatible test double for SQLitePCL.pretty.core (AI-assisted dev use only, not needed with real NuGet access)
-SandboxValidation/            SANDBOX-ONLY, not shipped — compiles MetadataHealthCheck.v2's real source against the shim (AI-assisted dev use only)
-SmokeTest/                    SANDBOX-ONLY, not shipped — manual-assertion console harness (xUnit blocked in AI sandbox, see Evidence Log). Real developer use: references MetadataHealthCheck.v2.csproj directly with real NuGet packages, using InMemoryMatchRepository.cs in place of real SQLite persistence.
-├── Program.cs                              Completed — verified against real build 2026-07-10; 34 assertions (up from 8) verified against real build 2026-07-11 after Phase 2 additions
+SandboxValidation/            SANDBOX-ONLY, not shipped — compiles MetadataHealthCheck.v2's real source against the shim (AI-assisted dev use only). Compile-Include glob path bug fixed 2026-07-12 (was matching zero files against the current flat repo layout); Storage/Sqlite excluded pending real SQLitePCL.pretty.core API surface in the shim.
+SmokeTest/                    SANDBOX-ONLY, not shipped — manual-assertion console harness (xUnit blocked in AI sandbox, see Evidence Log). Real developer use: references MetadataHealthCheck.v2.csproj directly with real NuGet packages, using InMemoryMatchRepository.cs in place of real SQLite persistence. Locally re-pointed at SandboxValidation.csproj for this session's testing only (nuget.org unreachable again this session) — not a repo change, .csproj as committed still references the real project directly.
+├── Program.cs                              Completed — verified against real build 2026-07-10; 34 assertions (up from 8) verified against real build 2026-07-11 after Phase 2 additions; 33 assertions verified 2026-07-12 after Phase 2 cont'd (5 pre-existing assertions updated to reflect richer evidence now correctly resolving previously under-evidenced cases)
 └── InMemoryMatchRepository.cs              Completed (added 2026-07-10) — fake IMatchRepository, bypasses unresolved real-SQLite provider version issue
 ```
 
@@ -508,3 +701,192 @@ Learnings, insights, and observations from the project.
   values exactly before the run confirmed them. No alias collector needed
   for this particular case — the existing distance metric already handles
   it.
+- **Recording-lookup duplication identified and resolved before, not
+  after, building the three new collectors** (2026-07-12):
+  `WorkRelationshipEvidenceCollector` already had its own `SearchRecording`
+  call, and `RecordingRelationshipEvidenceCollector`/
+  `CorroborationTierEvidenceCollector` would each have needed the same
+  (candidate, track) lookup independently — three MusicBrainz recording
+  searches per sampler round for the same underlying fact. Resolved with a
+  shared, memoized `RecordingLookup` class instead of touching
+  `SequentialSampler.cs` or the `IObservationEvidenceCollector` interface —
+  all three collectors take the same `RecordingLookup` instance, constructed
+  once in `MusicBrainzArtistResolverPlugin`, so only the first collector to
+  ask for a given (candidate, track) pair in a round actually triggers a
+  search.
+- **Fallback ladder introduced for recording lookups, deliberately not
+  solving the "wrong-field-hurts" tension** (2026-07-12): trackname+
+  artistname+albumname → trackname+albumname → trackname alone. Confirmed:
+  there is no way to avoid the risk that a wrong album or wrong artist-name
+  text degrades a fallback rung's result quality — both were considered and
+  neither can be designed around cleanly. Accepted as a known,
+  low-probability-in-practice risk rather than solved, relying on
+  `NameDistanceEvidenceCollector`'s existing rejection of poor name matches
+  as the real safety net (already proven against exactly this shape of risk
+  by the Gus Black/Del Serino cases, where a spurious candidate is
+  correctly rejected despite genuine Tier 1 corroboration existing under a
+  wrong candidate's MBID). `RungReached` is recorded on every lookup result
+  as diagnostic-only data, intended to eventually feed the §16 calibration
+  job's own kind of question ("is it ever worth falling back to
+  trackname-alone, or never?") — not yet exercised by any fixture case,
+  since none of the current `SearchRecording` fixture branches vary their
+  result by the `artistName` parameter. Honest gap, flagged in
+  `RecordingLookup.cs` itself, not fabricated coverage.
+- **§5.2 supersession rule: design corrected mid-session, before
+  implementation, not after** (2026-07-12): first proposed as a
+  collection-time decision (skip re-emitting the album-match precursor for
+  an album a track-level lookup has already resolved), then corrected on
+  closer reading of `SequentialSampler.cs`'s actual Step 1/Step 2 ordering
+  — `AlbumMatchEvidenceCollector` runs once, always before any per-track
+  observation exists, so it has no way to know in advance whether a later
+  observation will produce a Tier 1 record for the same album. Implemented
+  at scoring time instead, in `SimpleWeightedSumScorer`, as a narrow,
+  explicit filter (not the general `JointEvidencePairs` mechanism, which
+  stays not-started).
+- **§18's worked example reproduced structurally, not numerically exactly**
+  (2026-07-12): the existing Phase 1 fixture case (Sarah Vaughan, single
+  "Autumn Leaves"/"Crazy and Mixed Up" track) is §18's exact setup, and now
+  resolves auto-accept, correct candidate, single observation, with a 7.0
+  nat margin matching §18's own stated figure. The per-candidate absolute
+  LLR values do NOT match §18's illustrative math, for two reasons found
+  during this unit, both worth a second look rather than silently
+  accepted: (1) §18's prose never mentions a `WorkRelationship` credit, but
+  this fixture's "Autumn Leaves" genuinely carries one for the correct
+  candidate (+2.5), pushing its real total (7.5) above §18's stated 5.0;
+  (2) §18 assumes the runner-up candidate receives a −2.0 penalty for "no
+  track/album match", but no negative-evidence type for this exists
+  anywhere in §6.1's catalog — the fixture's runner-up recording is
+  legitimately attributed to the runner-up's own MBID, just weakly (Tier 3,
+  neither title field corroborates), giving it a small *positive* +0.5
+  instead. The 7.0 nat margin matching §18 anyway is confirmed coincidental
+  (both totals moved up from the illustrative figures by a similar amount),
+  not evidence the underlying math matches §18's intent point-for-point.
+  Open question for a design discussion, not resolved in this unit: should
+  §18's prose be corrected to match what was actually built, or should a
+  genuine "no-match negative evidence" type be added for a candidate whose
+  recording search under a given track title resolves to a *different*
+  artist entirely?
+- **`api_cache`/`ApiCacheRepository` deliberately deferred, not
+  overlooked** (2026-07-12): building the cache key/table structure before
+  the real MusicBrainz lookup shape was settled (the fallback ladder in
+  `RecordingLookup.cs`) would have meant guessing at what's actually being
+  cached. Revisit once the ladder's real query shapes are exercised against
+  more than fixture data.
+- **Pre-existing bug found in `SandboxValidation.csproj`, unrelated to this
+  unit's actual scope, fixed in passing** (2026-07-12): its `Compile
+  Include` glob path assumed a nested `MetadataHealthCheck.v2/` subfolder
+  that doesn't exist in the current repo layout — the real source sits at
+  the repo root as a sibling of `SandboxValidation/`. This meant the glob
+  silently matched zero files; the project "built" successfully with an
+  empty compile set. Found while setting up a way to actually run
+  `SmokeTest` in this session (`nuget.org` unreachable again this session —
+  same root cause as the entry above from 2026-07-08, evidently
+  session-dependent rather than permanently resolved). Fixed by listing the
+  real sibling folders explicitly.
+
+**Design review against real MusicBrainz data (2026-07-12, no code changed
+in this pass — analysis/design findings only, captured here per this log's
+own remit to record "learnings, insights, and observations," not just
+tested code):**
+
+- **The §18/Sarah Vaughan fixture case was confirmed to be entirely
+  invented, not grounded in any real MusicBrainz query — an important
+  distinction from Gus Black/Queen/Florence, which are real facts even
+  where the exact MBID strings weren't independently confirmed.** Real
+  `ws/2/artist` and `ws/2/recording` lookups were pulled (both via
+  Claude's own web search/fetch, and directly by the user against the live
+  API) for the real "Sarah Vaughan" / "Autumn Leaves" / "Crazy and Mixed
+  Up" case. Findings: MusicBrainz's real MBID for the correct artist is
+  `351d8bdf-33a1-45e2-8c04-c85fad20da55`; her real registered aliases
+  (`Sarah Vahghan`, `Sarah Voughan`, `Sara Vaughan`, `Vaughan Sarah`,
+  `Sarah Vaughn`) are all spelling variants of the *same* person, not a
+  distinct rival artist — meaning the existing fixture's "Y" candidate
+  (invented as `GetArtistDisplayName` → `"Sara Vaughn"`, framed as a
+  competing same-named artist) doesn't correspond to any real ambiguity.
+  The real near-collisions that do exist for this name
+  (`Sarah Vaughan and Her Trio`, `...and Her Octet`, `...and The All Star
+  Band` — distinct MB entities, lower relevance scores, clearly
+  differentiated full names) aren't a hard case either. **Conclusion: this
+  specific fixture, however useful for exercising the code's own logic
+  (§18 reproduction), was never a real test of whether the engine could
+  be misled — it can't be used to answer that question, and shouldn't be
+  cited as evidence either way for real-world efficacy.**
+- **Confirmed via the real MusicBrainz response: `SearchArtist` /
+  alias-based candidate generation is fully dead code today.** Neither
+  `AnchoredRecordingStrategy` nor `SoftBucketStrategy` calls it — candidate
+  generation is 100% recording-search-driven (§5.3's Strategy A/B), and
+  aliases are never fetched or compared anywhere in the pipeline (no code
+  path reads them, `AliasEvidenceCollector` remains not-started). The real
+  `ws/2/recording` response confirmed that MusicBrainz's own recording
+  search results already carry the artist's registered aliases inline
+  (`artist-credit[].artist.aliases`), with no extra `inc=` needed — a real,
+  observed data point (not yet confirmed as guaranteed across all query
+  shapes) that some of what `AliasEvidenceCollector`/`NameDistanceEvidenceCollector`
+  need may already be available for free from calls the pipeline already
+  makes.
+- **A real, structural candidate-generation gap identified and discussed
+  in depth — SETTLED 2026-07-12 (see Directives at top of this file and
+  the "Coding checklist" entry immediately below Directives):** current
+  candidate generation harvests every distinct `ArtistMbid` a recording
+  search returns and admits all of them as full candidates unconditionally
+  — there is no artist-name/alias gate applied first, and
+  `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore` (already
+  named in §5.4/§10.3 as the intended relevance-score admission filter) is
+  not actually implemented anywhere in `SoftBucketStrategy` today. An
+  alternative architecture was proposed and discussed at length: search by
+  artist name (+ aliases) *first*, generate candidates only from that
+  name-matched pool, then check for that specific candidate's presence in
+  the recording data as the corroborating signal — inverting today's
+  "recording first, name-check after" flow to "name first,
+  recording-presence as confirmation." Real trade-off surfaced on both
+  sides: today's design risks admitting spurious candidates it must then
+  rely on negative name-similarity to cancel out after the fact; the
+  proposed design risks *excluding* a correct candidate upfront if the
+  real recording's artist-credit doesn't textually resemble the Emby-tagged
+  name and isn't in MusicBrainz's own registered alias list (a genuine MB
+  data-completeness gap, not hypothetical). **Decided: artist-search-first
+  is the confirmed direction** — accepted deliberately, on the basis that a
+  ground-truth Emby observation gives something real to search against,
+  and ground-truth accuracy is the user's responsibility, not the engine's
+  to solve for. The old approach is kept in the spec's Appendix A rather
+  than deleted, specifically in case a fundamental flaw in the new
+  direction is found later. **Not yet implemented in code** — see the
+  coding checklist. Confirmed as a concrete instance of the old design's
+  problem: `RecordingLookup`'s own rung 2 (trackname+albumname) is a
+  byte-for-byte duplicate of `SoftBucketStrategy`'s own candidate-generation
+  call for the same track — traced against real, literal `ws/2` URLs, not
+  just asserted in the abstract.
+- **Same-name-different-artist collision (real MusicBrainz case: "Nirvana"
+  — 90s US grunge band vs. 1967 UK psychedelic pop duo) investigated and
+  found NOT to be a real opportunity for the engine to be misled, given
+  the two acts' catalogs are entirely disjoint (verified: no shared track
+  titles between either act's real discography).** Checking an observed
+  track against both same-named candidates (per the sampler's existing
+  joint-evaluation design) correctly produces no signal for the wrong
+  candidate and strong signal for the right one — the design handles this
+  correctly as built, no change needed. This was a useful negative result:
+  confirms the joint per-round evaluation approach is sound for genuine
+  same-name collisions, provided the observed track itself carries a
+  distinctive title.
+- **Real, valid residual risk identified and deliberately deferred, not
+  dismissed:** if a same-named-artist collision case involved a **generic**
+  track title (e.g. a song called "Love") on a **generic** album title
+  (e.g. "Greatest Hits" or a close variant) — rather than a distinctive
+  title like "Smells Like Teen Spirit" — the fallback ladder could
+  plausibly relax to a loose rung and pick up a real, non-spurious
+  corroboration hit against the *wrong* same-named artist, since neither
+  the track nor album title is distinctive enough on its own to rule that
+  candidate out. This is a genuine gap, structurally different from the
+  Nirvana case above, and needs a deliberately generic-titled real example
+  to test properly (not yet done). **Proposed future tweak (not built,
+  Phase 2+/later):** extend the existing distinctive/generic title
+  treatment already built for `AlbumMatchEvidenceCollector` (§6.1's
+  `AlbumMatch.Distinctive` vs `AlbumMatch.Generic` split) to also apply
+  within `CorroborationTierEvidenceCollector`'s own weighting — i.e.
+  downweight a Tier 1/2/3 hit whose track and/or album title is itself
+  generic, and correspondingly upweight longer/more distinctive track
+  titles. Track duration was also raised as a possible additional signal
+  for large-distance elimination (e.g. a "Love" hit that's 7 minutes long
+  when the real observed track is 3 minutes) — not currently possible,
+  since `EmbyTrackCredit` carries no duration field at all today (§4's
+  model doesn't have one).

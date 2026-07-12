@@ -213,20 +213,25 @@ Once per candidate (not per track): fetch the candidate's MusicBrainz release-gr
 
 ### 5.3 Candidate Generation Strategies
 
+**Confirmed direction (settled 2026-07-12, following a design review against real MusicBrainz data — see Project Log Directives and Evidence Log for the full reasoning): candidate generation is artist-search-first, not recording-search-first.** The previous recording-search-first design (still what `SoftBucketStrategy.cs` implements as of this writing — the code has not yet been updated to match this section) is preserved in **Appendix A** for reference, in case a fundamental flaw in this direction is found later. It should not be treated as a live alternative unless that happens.
+
 Three strategies, tried in this priority order:
 
-- **Strategy A (own anchor)**: if the source artist already has a confirmed MBID anchor, query `recording:"{track}" AND arid:{anchor_mbid}` (§7.2, call C3). Near-certain single hit. Even a single hit is passed through full evidence scoring — an anchor does not bypass verification.
-- **Strategy C (borrowed anchor — Composer tier only)**: if no own anchor exists, but a co-occurring artist on the same recording (from the `artist_cooccurrence` table, §9) is already resolved, use *that* artist's confirmed MBID as the anchor for the same query shape as Strategy A. Record the anchor dependency (§9, `anchor_dependencies` table) with the anchor's confidence at time of use, so an overturned anchor can trigger a cascade re-open.
-- **Strategy B (broad fallback)**: if neither A nor C is available, query `recording:"{track}" AND release:"{album}"` (falling back to dropping the `release:` clause if empty) (§7.2, call C4). Broader result set, tighter duration filter (§5.4).
+- **Strategy A (own anchor)**: if the source artist already has a confirmed MBID anchor, query `recording:"{track}" AND arid:{anchor_mbid}` (§7.2, call C3). Near-certain single hit. Even a single hit is passed through full evidence scoring — an anchor does not bypass verification. **Unaffected by this change** — an anchor already identifies a specific artist by ID, so there's no name-search step to invert here.
+- **Strategy C (borrowed anchor — Composer tier only)**: if no own anchor exists, but a co-occurring artist on the same recording (from the `artist_cooccurrence` table, §9) is already resolved, use *that* artist's confirmed MBID as the anchor for the same query shape as Strategy A. Record the anchor dependency (§9, `anchor_dependencies` table) with the anchor's confidence at time of use, so an overturned anchor can trigger a cascade re-open. **Unaffected by this change**, for the same reason as Strategy A.
+- **Strategy B (artist-search-first, confirmed direction)**: query `artist:"{source artist name}"` (§7.2, call C1) to get a pool of candidate artists **and their registered aliases** in one call. Admit a candidate from this pool only if its name or one of its aliases is a sufficiently close match to the source artist's name — this admission bar is the real, load-bearing implementation of `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore` (§5.4/§10.3), which exists in the spec today but is **not actually applied anywhere in the current code** (a gap confirmed during the same review, not yet fixed). For each admitted candidate, confirm via the same per-track recording lookup already built for evidence collection (`RecordingLookup`, §5.4) — presence of a recording matching this candidate's MBID is the corroborating signal, not the basis for generating the candidate in the first place. **This is the one part of §5.3 needing real code changes** — see the Project Log's coding checklist (2026-07-12) for the concrete list of what that involves.
 
 All strategies return candidates tagged with generation provenance (strategy name, literal query) for logging (§15) and evidence traceability.
+
+**Known trade-off of this confirmed direction, accepted deliberately rather than solved (same review):** admitting candidates by name/alias match first risks *excluding* a correct candidate upfront if its real MusicBrainz artist-credit text doesn't resemble the Emby-tagged name and isn't in MusicBrainz's own registered alias list (a genuine MB data-completeness gap, not hypothetical) — the mirror-image risk of the old design's tendency to admit spurious candidates that then had to be cancelled out after the fact by negative name-similarity. Accepted because a ground-truth Emby observation gives a real artist name to search against, and the responsibility for that ground truth being reasonably accurate sits with the user/library tagging, not the engine.
 
 ### 5.4 Evidence Collection Rules
 
 - Every evidence collector implements `IEvidenceCollector<TSourceEntity>` (§11.2) and returns an `EvidenceRecord` with the **raw observed fact**, never a pre-baked LLR value — the LLR is looked up from the current `ScoringConfig` (§10.3) at scoring time. This is required for the "re-score without re-fetching" developer operation (§14.2) to work.
 - **Static (candidate-pair-level) evidence — computed once, not per observation.** Name-similarity distance is a property of the (source name, candidate name) pair and does not change per track; it must not re-enter the running LLR sum on every sampled observation.
 - **Genuinely diverse per-observation evidence (different album, different track) is treated as independent and counted at full weight — no default decay factor for repeated observations.** The only exception is the static-evidence rule above; do not apply any other blanket discount to repeated observations.
-- **Correlated evidence pairs must be modeled as one joint feature, not summed from independent parts.** Specifically: alias-match + recording-match together (one compound LLR value, not the sum of two independently-weighted values), and album-match + later full-triple corroboration for the same album (the triple supersedes, per §5.2). The full list of joint-evidence overrides lives in `ScoringConfig.JointEvidencePairs` (§10.3).
+- **Correlated evidence pairs must be modeled as one joint feature, not summed from independent parts.** Specifically: alias-match + recording-match together (one compound LLR value, not the sum of two independently-weighted values), and album-match + later full-triple corroboration for the same album (the triple supersedes, per §5.2). The full list of joint-evidence overrides lives in `ScoringConfig.JointEvidencePairs` (§10.3). **Implementation note (confirmed during Phase 2 planning):** the album-match/full-triple supersession specifically can only be resolved at scoring time, not collection time — the album-match precursor (§5.2) always runs once, before any per-track observation exists, so it has no way to know in advance whether a later observation will produce a full-triple for the same album. `SimpleWeightedSumScorer` implements this one case directly as a narrow, explicit filter, ahead of the general `JointEvidencePairs` mechanism (`JointEvidenceRules.cs`), which remains unbuilt.
+- **Per-track recording lookups use a fallback ladder (confirmed during Phase 2 planning, not part of the original design):** trackname+artistname+albumname → trackname+albumname → trackname alone, tried in that order until a hit for the candidate being evidenced is found. Each rung risks its own false-positive shape (a wrong album hurts the tightest rung; a wrong artist-name-text hurts the middle rung) — there is no way to design around this tension when falling back to a looser query at all, so it is accepted as a known, low-probability-in-practice risk rather than solved, relying on `NameDistanceEvidenceCollector`'s existing rejection of poor name matches as the real safety net. Every lookup records which rung produced its result (diagnostic-only for now, not yet used to change behavior) — intended to eventually feed §16's calibration job with the data needed to answer "is it ever worth falling back to trackname-alone, or never?" Implemented once, shared, and memoized per (candidate, track) pair (`Resolvers/MusicBrainz/Evidence/RecordingLookup.cs`) rather than re-implemented per collector, since `WorkRelationshipEvidenceCollector`, `RecordingRelationshipEvidenceCollector`, and `CorroborationTierEvidenceCollector` all need the same underlying lookup for the same fact.
 - MusicBrainz's own search relevance `score` field (returned by artist/recording search, §7.2 calls C1/C4) is **never** fed into the LLR sum — it is a text-relevance ranking, not an identity-confidence signal, and measures the same underlying fact as the dedicated name-distance evidence type. Use it only as the candidate-pool admission filter (`ScoringConfig.CandidateGeneration.ArtistCandidateMinScore`).
 - Composer-bucket credits must be decomposed by actual MusicBrainz relationship type, not treated as one undifferentiated "Composer matched" fact. This requires the recording lookup to request **both** work-level and recording-level relationships in one call: `inc=artist-credits+artist-rels+work-rels+work-level-rels` (§7.2, call C5). Work-level relations (`work-rels`+`work-level-rels`) surface composer/lyricist/librettist/writer; recording-level relations (`artist-rels`) surface producer/engineer/arranger — arranger specifically is a recording-level credit by MusicBrainz convention, not work-level. Record the specific relationship type found verbatim in `EvidenceRecord.RelationshipType`.
 
@@ -315,6 +320,8 @@ All values are starting defaults, stored in `scoring_config_overrides` (§9) and
 | Corroboration Tier 1 — full triple (Artist+Track+Album) | +3.5 | Near-decisive alone; supersedes standalone album-match for the same album |
 | Corroboration Tier 2 — Artist+Track, no album | +1.8 | Strong, not alone sufficient for auto-accept |
 | Corroboration Tier 3 — single field only | +0.5 | Background support |
+
+**Known residual risk, deliberately deferred, not yet built (confirmed via real MusicBrainz data during a same-name-collision investigation, 2026-07-12):** the album match distinctive/generic split above already guards against generic *album* titles ("Greatest Hits", self-titled) diluting the album-match precursor — but Corroboration Tier 1/2/3 above currently applies the same flat LLR regardless of how distinctive the *track* or *album* title actually is. A genuinely ambiguous case was reasoned through (not yet found in real data): a same-named-artist collision where the observed track has a **generic title** (e.g. a song simply called "Love") on a **generic album** (e.g. "Greatest Hits" or a close variant) could plausibly survive the fallback ladder (`RecordingLookup.cs`, §5.4) down to a loose rung and pick up genuine (not spurious) weak corroboration against the *wrong* same-named candidate, since neither title field is distinctive enough on its own to rule that candidate out. A real, genuinely ambiguous case with these exact properties hasn't been located and tested yet — this is a reasoned-through risk, not a confirmed failure. Proposed future tweak, not built: extend the distinctive/generic treatment above into `CorroborationTierEvidenceCollector`'s own weighting (downweight a Tier 1/2/3 hit whose track/album title is itself generic), and consider track duration as an additional large-distance elimination signal once the data model supports it (`EmbyTrackCredit`, §4, currently carries no duration field at all).
 | Entity-type/life-span sanity — consistent | +0.2 | Minor |
 | Entity-type/life-span sanity — contradicts | −3.0 | Near-disqualifying |
 | Tag/genre overlap | +0.3 | Weak |
@@ -359,10 +366,10 @@ Categorical, not continuous — encode as a specific evidence type with the tier
 
 | # | Call | Triggered By | Yields | Feeds |
 |---|---|---|---|---|
-| **C1** | `GET /ws/2/artist?query=artist:"{name}"&fmt=json` | Start of every resolution task | Candidate list: MBID, name, sort-name, disambiguation, type, area, life-span, MB's own text-relevance `score` | Candidate-pool admission filter only — see the score caveat in §5.4 |
+| **C1** | `GET /ws/2/artist?query=artist:"{name}"&fmt=json` | **Strategy B (confirmed 2026-07-12 — see §5.3)**, and at the start of every resolution task generally | Candidate list: MBID, name, sort-name, disambiguation, type, area, life-span, **registered aliases (confirmed present inline in the real response, no extra `inc=` needed — verified 2026-07-12)**, MB's own text-relevance `score` | **Now load-bearing for candidate generation itself** (§5.3) — name/alias match against this response is the admission bar for `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore`, not just a downstream evidence check |
 | **C2** | `GET /ws/2/artist/{mbid}?inc=aliases+tags+release-groups+url-rels&fmt=json` | Once per candidate surviving C1's filter | Aliases, tags, release-groups, url-rels (external IDs) | Alias-match, tag-overlap, album-match (§5.2), external-ID evidence | Release-group/release browse endpoints **require** an explicit `type=`/`status=` filter or return empty — do not treat an unfiltered empty result as "no albums found." |
 | **C3** | `GET /ws/2/recording?query=recording:"{track}"+AND+arid:{anchor_mbid}&fmt=json` | Strategy A or C | Matching recording(s), usually one: artist-credit, length, release-list | Duration filter; Tier 2/3 corroboration data included at no extra cost |
-| **C4** | `GET /ws/2/recording?query=recording:"{track}"+AND+release:"{album}"&fmt=json` (fallback: drop `release:`) | Strategy B | Same shape as C3, typically more candidates | Same as C3 — same score caveat applies |
+| **C4** | `GET /ws/2/recording?query=recording:"{track}"+AND+release:"{album}"&fmt=json` (fallback: drop `release:`) | **`RecordingLookup`'s fallback ladder (§5.4), as the per-candidate confirmation step for Strategy B** — previously this call's shape was Strategy B's own primary candidate-generation query (see Appendix A); as of the 2026-07-12 direction it's used to *confirm* an already name/alias-admitted candidate, not to generate the candidate pool itself | Same shape as C3, typically more candidates | Same as C3 — same score caveat applies |
 | **C5** | `GET /ws/2/recording/{id}?inc=artist-credits+artist-rels+work-rels+work-level-rels&fmt=json` | On the surviving recording candidate from C3/C4 | Work-level relations (composer/lyricist/writer) **and** recording-level relations (producer/engineer/arranger) — see §5.4 for why both `inc` terms are required in one call | Composer-relationship LLR breakdown, §6.1 |
 | **C6** | `GET /ws/2/artist/{candidate_mbid}?inc=artist-rels&fmt=json` | After C5 surfaces a writer/composer MBID | Artist-to-artist relationship list | Supporting corroboration check |
 
@@ -615,6 +622,12 @@ MetadataHealthCheck.v2/
 │       │   ├── AnchorByAssociationStrategy.cs    -- Strategy C
 │       │   └── ProviderIdFastPathStrategy.cs     -- §5.1
 │       └── Evidence/
+│           ├── RecordingLookup.cs                -- shared per-(candidate,track) recording
+│           │                                        lookup + fallback ladder (§5.4, confirmed
+│           │                                        during Phase 2 planning, not part of the
+│           │                                        original design) -- used by every
+│           │                                        collector below that needs one, instead of
+│           │                                        each calling SearchRecording independently
 │           ├── NameDistanceEvidenceCollector.cs
 │           ├── AliasEvidenceCollector.cs
 │           ├── WorkRelationshipEvidenceCollector.cs
@@ -949,25 +962,45 @@ The §19 comparison run and the §16 calibration job. No fixture-based test can 
 
 One concrete trace, for validating an implementation matches intent — this should become an actual test case per §17.1.
 
-**Setup**: Emby Artist "Sarah Vaughan" (AlbumArtist tier), two candidates survive C1/C2: MBID `X` (correct) and MBID `Y` (a different, less-famous same-named artist).
+**Corrected 2026-07-12** against real MusicBrainz data (previously this section used entirely invented MBIDs/aliases and an evidence type — a −2.0 "no match" penalty for the runner-up — that doesn't correspond to anything in §6.1's actual catalog; see Project Log Evidence Log, 2026-07-12, for the full finding). This version uses the real, externally-verified data for Emby artist "Sarah Vaughan" and updates the flow to the confirmed artist-search-first candidate generation (§5.3).
+
+**Setup**: Emby Artist "Sarah Vaughan" (AlbumArtist tier), one observed track: "Autumn Leaves" on album "Crazy and Mixed Up".
 
 ```
-Candidate X:
-  Album-match precursor: distinctive album title matches         llr += 1.5   → running = 1.5
-  Observation 1 (AlbumArtist bucket, album "Crazy and Mixed Up"):
-      Tier 1 full triple (Artist+Track+Album all agree)          llr += 3.5   (supersedes the 1.5 precursor for this album, §5.2)
-      Name similarity, static, computed once                      llr += 1.5
+Step 1 — Strategy B, artist search (§5.3, real data):
+  GET /ws/2/artist?query=artist:"Sarah Vaughan"&fmt=json
+  Top result: id=351d8bdf-33a1-45e2-8c04-c85fad20da55, name="Sarah Vaughan",
+              score=100 — exact name match, admitted as candidate X.
+  Next result: id=23bdf915-67af-4089-b938-60efdaeab13f,
+               name="Sarah Vaughan and Her Trio", score=63 — a real, distinct
+               MusicBrainz entity, but its full name is not a close match to
+               the source artist's own name ("Sarah Vaughan") and it carries
+               no alias claiming otherwise. Does NOT clear the
+               ArtistCandidateMinScore/name-closeness admission bar (§5.3) —
+               excluded before candidate generation, not scored down
+               afterward. No candidate Y exists in this trace.
+
+Candidate X (only candidate):
+  Album-match precursor: "Crazy and Mixed Up" is a real release-group for
+    this artist (expected from real data; not independently re-confirmed by
+    a separate release-groups call in this pass) — distinctive title
+                                                                   llr += 1.5   → running = 1.5
+  Observation 1 (AlbumArtist bucket, "Autumn Leaves"/"Crazy and Mixed Up"):
+    Rung 1 of the recording-lookup ladder (§5.4) confirms immediately —
+    real recording id 5dbea991-e5e9-4489-81a2-d5e8e13f161a, track title and
+    release title both match exactly:
+      Tier 1 full triple (Artist+Track+Album all agree)                llr += 3.5   (supersedes the 1.5 precursor for this album, §5.2)
+      Name similarity, static, computed once (exact match)              llr += 1.5
   running_llr = 5.0
 
-Candidate Y (same observations checked against it):
-  Album-match precursor: no title overlap                          llr += 0
-  Observation 1: no track/album match against Y                    llr -= 2.0
-  running_llr = -2.0
-
-Margin = 5.0 - (-2.0) = 7.0 ≥ MinMarginOverRunnerUp (+2.0)
+Margin: trivially satisfied (§5.7) — no runner-up exists, since "...and Her
+  Trio" never entered the candidate pool. This is a genuine single-candidate
+  case, not a margin comparison against a weak rival.
 ```
 
 **Expected result**: auto-accept X after **one observation** — `BucketCeiling.AlbumArtist` (3) is never needed here; it's the ceiling this run stayed well under. This is the sequential-sampler behavior from §5.5, not a fixed-batch result.
+
+**On multi-candidate margin behavior**: this specific real case doesn't exercise the margin-over-runner-up check, since only one candidate survives the artist-search admission bar. That mechanism is validated separately — a real same-name collision (MusicBrainz's two distinct "Nirvana" acts, 90s US grunge vs. 1967 UK psych-pop) was investigated during the same review and confirmed to be handled correctly by the sampler's joint per-round evaluation, given the two acts' catalogs don't overlap (Project Log Evidence Log, 2026-07-12). A genuinely hard multi-candidate case — one where a real recording's title is generic enough that a same-named rival could plausibly pick up real (not spurious) weak corroboration — remains a known, deliberately deferred residual risk (§6.1), not yet demonstrated against real data.
 
 ---
 
@@ -1007,3 +1040,15 @@ Building the entire spec simultaneously is not a realistic first milestone. Buil
 3. **Tiering + anchoring**: provisional tier-classification pass (E1b/E1c, §8.2) for wavefront ordering, authoritative per-artist reclassification and incremental co-occurrence discovery from each artist's own E2 read (§8.1–§8.2, §9), Strategy C (§5.3). Goal: composer-only artists resolving via borrowed anchors.
 4. **Active learning + calibration**: review queue, identity cache, calibration backtest job (§5.9, §16).
 5. **Developer tooling + config pages**: `EngineConfig` SimpleUI page, Developer HTML/JS page with filters/granular clears/scoring grid (§13–14). Deliberately last — useful throughout development as plain hardcoded test values in the meantime, but not blocking earlier phases.
+
+---
+
+## Appendix A: Superseded Candidate-Generation Approach (Strategy B)
+
+**Status: superseded 2026-07-12, kept for reference only.** This is the recording-search-first design §5.3 described before that date, and what `SoftBucketStrategy.cs` still implements as of this writing (the code has not yet been updated to match the confirmed direction in §5.3 — see the Project Log's coding checklist for what that update involves). Do not treat this as a live alternative to build against unless a fundamental flaw is found in the artist-search-first direction and this needs to be revisited.
+
+> **Strategy B (broad fallback, superseded)**: if neither A nor C is available, query `recording:"{track}" AND release:"{album}"` (falling back to dropping the `release:` clause if empty) (§7.2, call C4). Broader result set, tighter duration filter (§5.4). Every distinct artist MBID returned became a candidate, admitted unconditionally — no name/alias gate was applied before candidate generation, and `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore` was never actually implemented anywhere despite being named in the spec.
+
+**Why this was superseded:** a design review against real MusicBrainz data (2026-07-12, Project Log Evidence Log) found this design relies entirely on downstream evidence (chiefly negative name-similarity) to cancel out spurious candidates after the fact, rather than never admitting them in the first place. Concretely: a recording search returns every artist who has ever recorded something matching the queried track/album text, with no upfront check that any of them are plausibly the artist actually being resolved. The artist-search-first design (§5.3, current) closes this by checking name/alias plausibility *before* a candidate is ever generated.
+
+**What this approach still might be right for, if revisited:** cases where MusicBrainz's real artist-credit text for the correct candidate doesn't resemble the Emby-tagged name and isn't in MusicBrainz's own registered alias list — a genuine data-completeness gap that could cause artist-search-first to miss a real candidate the recording-first approach would have found. No real example of this has been located and confirmed yet; if one is, it's the concrete trigger for revisiting this appendix.
