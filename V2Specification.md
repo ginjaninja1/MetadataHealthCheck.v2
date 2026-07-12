@@ -219,30 +219,41 @@ Three strategies, tried in this priority order:
 
 - **Strategy A (own anchor)**: if the source artist already has a confirmed MBID anchor, query `recording:"{track}" AND arid:{anchor_mbid}` (§7.2, call C3). Near-certain single hit. Even a single hit is passed through full evidence scoring — an anchor does not bypass verification. **Unaffected by this change** — an anchor already identifies a specific artist by ID, so there's no name-search step to invert here.
 - **Strategy C (borrowed anchor — Composer tier only)**: if no own anchor exists, but a co-occurring artist on the same recording (from the `artist_cooccurrence` table, §9) is already resolved, use *that* artist's confirmed MBID as the anchor for the same query shape as Strategy A. Record the anchor dependency (§9, `anchor_dependencies` table) with the anchor's confidence at time of use, so an overturned anchor can trigger a cascade re-open. **Unaffected by this change**, for the same reason as Strategy A.
-- **Strategy B (artist-search-first, confirmed direction)**: query `artist:"{source artist name}"` (§7.2, call C1) to get a pool of candidate artists **and their registered aliases** in one call. Admit a candidate from this pool only if its name or one of its aliases is a sufficiently close match to the source artist's name — this admission bar is the real, load-bearing implementation of `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore` (§5.4/§10.3), which exists in the spec today but is **not actually applied anywhere in the current code** (a gap confirmed during the same review, not yet fixed). For each admitted candidate, confirm via the same per-track recording lookup already built for evidence collection (`RecordingLookup`, §5.4) — presence of a recording matching this candidate's MBID is the corroborating signal, not the basis for generating the candidate in the first place. **This is the one part of §5.3 needing real code changes** — see the Project Log's coding checklist (2026-07-12) for the concrete list of what that involves.
+
+  **Parked extension, not built (confirmed 2026-07-12):** the co-occurring artist used as the anchor is currently identified from `artist_cooccurrence` however that table keys its rows today. A more precise version of this same idea — noted here so it isn't lost, not because it's being built now — would require each track *observation* (not just the candidate being evidenced) to carry the **Emby artist entity ID** of the co-occurring performer, not merely a name string, since names collide and a name-keyed anchor can silently borrow the wrong artist's identity. This is real but judged fringe-benefit relative to its cost while the engine's basics are still being built; revisit once Strategy C sees real usage and the `IObservationUnit` interfaces (§11.2) can be extended to carry entity IDs, not before.
+
+- **Strategy B (artist-search-first, confirmed direction), in two distinct stages:**
+
+  **Stage 1 — Admission gate (candidate generation, one-time per artist, contributes zero evidence).** Query `artist:"{source artist name}"` (§7.2, call C1) to get a pool of candidate artists **and their registered aliases** in one call. For each candidate, normalize both the Emby-tagged name and the candidate's primary name and every alias using a configurable replacement table (§10.3 `NameNormalizationRules` — strip leading "The", fold `&`/`and`/`+`, strip apostrophes, strip `feat`/`featuring`/`vs`/`with` credit suffixes, strip punctuation, fold case, collapse whitespace, normalize diacritics), then compute Levenshtein distance. Name and every alias are weighted **equally** at this stage — the question is only "does this MBID deserve a `/recording` lookup at all," not how good a match it is. Admit if the best distance across name-or-any-alias clears `ScoringConfig.CandidateGeneration.ArtistCandidateMaxEditDistance`. **This gate contributes nothing to the LLR sum** — it only decides which MBIDs proceed to Stage 2.
+
+  `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore` (MusicBrainz's own returned Lucene relevance `score`, 0–100, confirmed present in the real C1 response) remains a distinct, separate config value, defaulted to **0** (a no-op today, since it is not yet established as a reliable admission signal on its own). It is retained rather than removed in case future tuning against real resolution volume shows it adds value, alone or in combination with the edit-distance gate — see §10.3.
+
+  **Stage 2 — Recording-level corroboration (per track, repeatable, real evidence weight).** For each admitted candidate, confirm via the same per-track recording lookup already built for evidence collection (`RecordingLookup`, §5.4). When a `/recording` result's artist-credit text is compared against the candidate, a match against the candidate's **primary name** counts at full weight (`ScoringConfig.NameMatchWeight`, default 1.0); a match only via one of the candidate's **aliases** is genuine but slightly weaker corroboration (`ScoringConfig.AliasMatchWeight`, default 0.9, tunable — an alias match is "another bite at the cherry to find a match in the data," not a claim that alias-vs-name disambiguates identity). This factor multiplies whatever Corroboration Tier value (§6.3) that track observation would otherwise contribute. See §6.3 and §5.4 for exactly where this multiplier applies.
 
 All strategies return candidates tagged with generation provenance (strategy name, literal query) for logging (§15) and evidence traceability.
 
-**Known trade-off of this confirmed direction, accepted deliberately rather than solved (same review):** admitting candidates by name/alias match first risks *excluding* a correct candidate upfront if its real MusicBrainz artist-credit text doesn't resemble the Emby-tagged name and isn't in MusicBrainz's own registered alias list (a genuine MB data-completeness gap, not hypothetical) — the mirror-image risk of the old design's tendency to admit spurious candidates that then had to be cancelled out after the fact by negative name-similarity. Accepted because a ground-truth Emby observation gives a real artist name to search against, and the responsibility for that ground truth being reasonably accurate sits with the user/library tagging, not the engine.
+**Known trade-off of this confirmed direction, accepted deliberately rather than solved (same review):** admitting candidates by name/alias match first risks *excluding* a correct candidate upfront if its real MusicBrainz artist-credit text doesn't resemble the Emby-tagged name and isn't in MusicBrainz's own registered alias list (a genuine MB data-completeness gap, not hypothetical) — the mirror-image risk of the old design's tendency to admit spurious candidates that then had to be cancelled out after the fact by negative name-similarity. Accepted because a ground-truth Emby observation gives a real artist name to search against, and the responsibility for that ground truth being reasonably accurate sits with the user/library tagging, not the engine. The Stage 1 threshold is deliberately allowed to be looser than perfect — a marginal name match can still be admitted and let Stage 2's real track evidence decide it, rather than being excluded outright at the gate.
 
 ### 5.4 Evidence Collection Rules
 
 - Every evidence collector implements `IEvidenceCollector<TSourceEntity>` (§11.2) and returns an `EvidenceRecord` with the **raw observed fact**, never a pre-baked LLR value — the LLR is looked up from the current `ScoringConfig` (§10.3) at scoring time. This is required for the "re-score without re-fetching" developer operation (§14.2) to work.
-- **Static (candidate-pair-level) evidence — computed once, not per observation.** Name-similarity distance is a property of the (source name, candidate name) pair and does not change per track; it must not re-enter the running LLR sum on every sampled observation.
-- **Genuinely diverse per-observation evidence (different album, different track) is treated as independent and counted at full weight — no default decay factor for repeated observations.** The only exception is the static-evidence rule above; do not apply any other blanket discount to repeated observations.
-- **Correlated evidence pairs must be modeled as one joint feature, not summed from independent parts.** Specifically: alias-match + recording-match together (one compound LLR value, not the sum of two independently-weighted values), and album-match + later full-triple corroboration for the same album (the triple supersedes, per §5.2). The full list of joint-evidence overrides lives in `ScoringConfig.JointEvidencePairs` (§10.3). **Implementation note (confirmed during Phase 2 planning):** the album-match/full-triple supersession specifically can only be resolved at scoring time, not collection time — the album-match precursor (§5.2) always runs once, before any per-track observation exists, so it has no way to know in advance whether a later observation will produce a full-triple for the same album. `SimpleWeightedSumScorer` implements this one case directly as a narrow, explicit filter, ahead of the general `JointEvidencePairs` mechanism (`JointEvidenceRules.cs`), which remains unbuilt.
-- **Per-track recording lookups use a fallback ladder (confirmed during Phase 2 planning, not part of the original design):** trackname+artistname+albumname → trackname+albumname → trackname alone, tried in that order until a hit for the candidate being evidenced is found. Each rung risks its own false-positive shape (a wrong album hurts the tightest rung; a wrong artist-name-text hurts the middle rung) — there is no way to design around this tension when falling back to a looser query at all, so it is accepted as a known, low-probability-in-practice risk rather than solved, relying on `NameDistanceEvidenceCollector`'s existing rejection of poor name matches as the real safety net. Every lookup records which rung produced its result (diagnostic-only for now, not yet used to change behavior) — intended to eventually feed §16's calibration job with the data needed to answer "is it ever worth falling back to trackname-alone, or never?" Implemented once, shared, and memoized per (candidate, track) pair (`Resolvers/MusicBrainz/Evidence/RecordingLookup.cs`) rather than re-implemented per collector, since `WorkRelationshipEvidenceCollector`, `RecordingRelationshipEvidenceCollector`, and `CorroborationTierEvidenceCollector` all need the same underlying lookup for the same fact.
-- MusicBrainz's own search relevance `score` field (returned by artist/recording search, §7.2 calls C1/C4) is **never** fed into the LLR sum — it is a text-relevance ranking, not an identity-confidence signal, and measures the same underlying fact as the dedicated name-distance evidence type. Use it only as the candidate-pool admission filter (`ScoringConfig.CandidateGeneration.ArtistCandidateMinScore`).
+- **Name/alias comparison is not itself an evidence type — it is a two-stage mechanism spanning candidate generation and corroboration weighting (confirmed 2026-07-12, superseding all prior framing of "name similarity" as a scored fact; see §6.1 for what this replaced).** Stage 1 (§5.3, admission gate) is a one-time, per-artist, binary pass/fail with zero LLR contribution. Stage 2 (§5.3, corroboration) applies per recording-lookup result, as a multiplier (`NameMatchWeight`/`AliasMatchWeight`, §10.3) on whatever Corroboration Tier value (§6.3) that lookup would otherwise contribute — it is not a separate additive line, and is not computed once-and-cached the way the old static model assumed. Two candidates with genuinely identical track-level evidence and identical match-type on every track are a correct needs-review tie, not a gap requiring a manual tie-break rule.
+- **Genuinely diverse per-observation evidence (different album, different track) is treated as independent and counted at full weight — no default decay factor for repeated observations.**
+- **The album-match + later full-triple corroboration correlated pair remains a joint-feature case** — a full Tier 1 triple for a given album supersedes the standalone album-match precursor's contribution for that same album (§5.2), rather than summing both. **Implementation note (confirmed during Phase 2 planning):** this specifically can only be resolved at scoring time, not collection time — the album-match precursor (§5.2) always runs once, before any per-track observation exists, so it has no way to know in advance whether a later observation will produce a full-triple for the same album. `SimpleWeightedSumScorer` implements this one case directly as a narrow, explicit filter, ahead of the general `JointEvidencePairs` mechanism (`JointEvidenceRules.cs`), which remains unbuilt for any other case. (The alias+recording-match joint pair that previously also lived under this rule is retired along with the rest of old §6.1's static name-similarity model — see above.)
+- **Per-track recording lookups use a fallback ladder (confirmed during Phase 2 planning, not part of the original design):** trackname+artistname+albumname → trackname+albumname → trackname alone, tried in that order until a hit for the candidate being evidenced is found. Each rung risks its own false-positive shape (a wrong album hurts the tightest rung; a wrong artist-name-text hurts the middle rung) — there is no way to design around this tension when falling back to a looser query at all, so it is accepted as a known, low-probability-in-practice risk rather than solved, relying on `NameDistanceEvidenceCollector`'s rejection of poor matches (too distant to trust at all, regardless of rung) as the real safety net. This same collector is also the one that determines, per recording result, whether the match was against the candidate's primary name or an alias (`MatchedViaAlias: true/false`) — one collector doing double duty: reject if too poor to trust, otherwise report which weight (§5.3 Stage 2) the scorer should apply. Every lookup records which rung produced its result (diagnostic-only for now, not yet used to change behavior) — intended to eventually feed §16's calibration job with the data needed to answer "is it ever worth falling back to trackname-alone, or never?" Implemented once, shared, and memoized per (candidate, track) pair (`Resolvers/MusicBrainz/Evidence/RecordingLookup.cs`) rather than re-implemented per collector, since `WorkRelationshipEvidenceCollector`, `RecordingRelationshipEvidenceCollector`, and `CorroborationTierEvidenceCollector` all need the same underlying lookup for the same fact.
+- MusicBrainz's own search relevance `score` field (returned by artist/recording search, §7.2 calls C1/C4) is confirmed present in real responses (0–100, Lucene-based) but is **never** fed into the LLR sum. It is not currently used for the Stage 1 admission gate either (that's edit-distance based, §5.3) — it's retained as `ScoringConfig.CandidateGeneration.ArtistCandidateMinScore`, defaulted to 0 (inert), reserved in case future tuning shows it has standalone or combined value.
 - Composer-bucket credits must be decomposed by actual MusicBrainz relationship type, not treated as one undifferentiated "Composer matched" fact. This requires the recording lookup to request **both** work-level and recording-level relationships in one call: `inc=artist-credits+artist-rels+work-rels+work-level-rels` (§7.2, call C5). Work-level relations (`work-rels`+`work-level-rels`) surface composer/lyricist/librettist/writer; recording-level relations (`artist-rels`) surface producer/engineer/arranger — arranger specifically is a recording-level credit by MusicBrainz convention, not work-level. Record the specific relationship type found verbatim in `EvidenceRecord.RelationshipType`.
 
-### 5.5 Sequential Sampler
+### 5.5 Track Observation Feeder and Sequential Resolution Engine
+
+**Terminology split (confirmed 2026-07-12 — these were previously nested under one "Sequential Sampler" heading, which blurred two distinct components):** the **Track Observation Feeder** (§5.5.1) is a pre-engine step that selects and orders which Emby *track* to observe next for the artist under inspection. The **Sequential Resolution Engine** (below) is the separate downstream loop that takes each fed observation, generates/confirms candidates against it, accumulates evidence, and decides when to stop. The feeder knows nothing about candidates or LLR; the engine knows nothing about track selection. Each observation the feeder produces carries its bucket tier (AlbumArtist/Artist/Composer) along with it into the engine, since the tier affects both the role-weight multiplier (§6.2) and which generation strategies are even in play (Strategy C, §5.3, is Composer-tier only).
 
 The stopping rule and the sampling budget are the same mechanism — there is no separate "enough observations collected" concept apart from the running confidence crossing a bound.
 
 ```
 running_llr = 0
 for bucket in [AlbumArtist, Artist, Composer]:          # highest signal first
-    for obs in sample_from_bucket(bucket):               # ordered by distance-seeking, §5.5.1
+    for obs in feed_from_bucket(bucket):                 # ordered by the Feeder, §5.5.1
         running_llr += evidence_llr(obs) × role_weight(bucket)   # §6.4
         if running_llr >= AutoAcceptThreshold:
             STOP → auto-accept                            # may fire after a single observation
@@ -254,19 +265,20 @@ if no bound was crossed after all buckets/budgets exhausted:
     STOP → needs-review
 ```
 
-`BucketCeiling` (default: AlbumArtist 3, Artist 4, Composer 6) is a sampling **budget**, not a target — the actual stop can occur anywhere from the first observation up to the ceiling.
+`BucketCeiling` (default: AlbumArtist 3, Artist 4, Composer 6) is a sampling **budget**, not a target — the actual stop can occur anywhere from the first observation up to the ceiling. **Open item, deliberately deferred (confirmed 2026-07-12):** exactly when the engine should give up on finding a better-supported candidate versus asking the Feeder for one more observation is expected to need real tuning once resolution volume exists — no change proposed here beyond what `BucketCeiling` already provides as a first-pass budget.
 
-**Clarification (confirmed during Phase 2 planning — the pseudocode above reads ambiguously on this point):** the loop above is written per-candidate for readability, but the sampler evaluates every live candidate **jointly, one round at a time** — not one candidate's loop run to completion in isolation before moving to the next. This is required by §5.7's margin check, which compares the top candidate's cumulative LLR against the runner-up's own cumulative LLR: that comparison is only meaningful if every live candidate has been given the same observations at the same point. Concretely: draw one observation, score it against *every* live candidate, check the decision gate (top crosses threshold *and* margin over runner-up, or all candidates at/below reject), and only then draw the next observation if neither condition is met. §18's worked example is written this way for exactly this reason — the same observation is checked against both X and Y before the margin is evaluated.
+**Clarification (confirmed during Phase 2 planning — the pseudocode above reads ambiguously on this point):** the loop above is written per-candidate for readability, but the engine evaluates every live candidate **jointly, one round at a time** — not one candidate's loop run to completion in isolation before moving to the next. This is required by §5.7's margin check, which compares the top candidate's cumulative LLR against the runner-up's own cumulative LLR: that comparison is only meaningful if every live candidate has been given the same observations at the same point. Concretely: draw one observation, score it against *every* live candidate, check the decision gate (top crosses threshold *and* margin over runner-up, or all candidates at/below reject), and only then draw the next observation if neither condition is met. §18's worked example is written this way for exactly this reason — the same observation is checked against both X and Y before the margin is evaluated.
 
-#### 5.5.1 Distance-Seeking Sampling Order
+#### 5.5.1 Track Observation Feeder — Distance-Seeking Order
 
-Within a bucket, rank available tracks before drawing the next observation, in this priority order:
+Within a bucket, rank available tracks before feeding the next observation to the engine, in this priority order:
 1. **Different album** over same album (avoids correlated risk from one mis-tagged release).
-2. **Single-credit tracks** (exactly one `Artist` and one `AlbumArtist`) over multi-credit tracks — an unambiguous credit is more likely to produce a clean, undisambiguated MusicBrainz match on the other side of the lookup, making Tier 1 full-triple corroboration (§6.3) more likely to land per observation. This is a sampling-order preference only: a multi-credit track is not discounted or excluded, only drawn later.
+2. **Single-credit tracks** (exactly one `Artist` and one `AlbumArtist`) over multi-credit tracks — an unambiguous credit is more likely to produce a clean, undisambiguated MusicBrainz match on the other side of the lookup, making Tier 1 full-triple corroboration (§6.3) more likely to land per observation. This is an ordering preference only: a multi-credit track is not discounted or excluded, only drawn later.
 3. **Different track title** over repeated/similar titles (avoids weak signal from near-duplicate tracks, e.g. live/remix variants).
-4. **Shorter albums (< 20 tracks)** preferred over longer ones — large-track-count releases are disproportionately compilations/box sets/deluxe editions, more likely to have incomplete or split MusicBrainz data.
+4. **Longer track titles** over shorter ones (added 2026-07-12) — a short, generic title (e.g. "Love") is more likely to produce weak or ambiguous corroboration on the MusicBrainz side than a longer, more distinctive one.
+5. **Shorter albums (< 20 tracks)** preferred over longer ones — large-track-count releases are disproportionately compilations/box sets/deluxe editions, more likely to have incomplete or split MusicBrainz data.
 
-These rules affect **only sampling order**, never the LLR sum directly — neither album length nor credit count says anything about candidate correctness on its own, only about the likely cleanliness or completeness of the observation. Keep this out of the scoring math entirely.
+These rules affect **only feed order**, never the LLR sum directly — none of album length, credit count, or title length says anything about candidate correctness on its own, only about the likely cleanliness or completeness of the observation. Keep this out of the scoring math entirely.
 
 ### 5.6 Scoring Model
 
@@ -300,17 +312,14 @@ On auto-accept or human-confirm, write to `identity_cache` keyed on the Emby sou
 
 All values are starting defaults, stored in `scoring_config_overrides` (§9) and editable via the Developer page (§14.3) — not hardcoded constants. Calibrate via §16 once real resolution volume exists.
 
+**Retired (confirmed 2026-07-12): "Name similarity" (near-exact/close/poor) and "Alias match" (alone, and as a joint feature with recording-match) no longer appear as evidence types below.** This table pre-dated the current, more precise model of how name/alias comparison actually functions — see §5.3 Stage 1/Stage 2 and §5.4 for what replaced it: a one-time, zero-LLR admission gate (Stage 1) and a per-recording-lookup corroboration weight, `NameMatchWeight`/`AliasMatchWeight` (§10.3), multiplying whatever Corroboration Tier value (§6.3) that lookup contributes (Stage 2). Nothing in this section computes or caches a standalone name-similarity LLR value anymore.
+
 ### 6.1 Evidence Types and LLR Values (nats)
 
 | Evidence | LLR | Notes |
 |---|---|---|
 | ProviderIds asserted MBID, confirmed | +5.0 | Tier 0, §5.1 — stronger than Tier 1 because asserted by prior tagging, but still verified, not blindly trusted |
 | ProviderIds asserted MBID, confirmation failed | −4.0 | Strong negative — a stale/wrong tag is informative |
-| Name similarity — near-exact | +1.5 | Static, computed once per candidate (§5.4) |
-| Name similarity — close (0.85–0.95 normalized) | +0.5 | Static |
-| Name similarity — poor (< 0.7) | −2.0 | Static |
-| Alias match, alone | +0.3 | Weak in isolation |
-| Alias + recording match (joint feature) | +1.8 | One compound value — do not sum from independent parts |
 | Disambiguation/context match | +0.8 | |
 | Work relationship: writer/composer/lyricist | +2.5 | Sourced from `work-rels`+`work-level-rels`, §5.4/§7.2 |
 | Recording relationship: producer | +0.8 | Sourced from `artist-rels` on the recording, §5.4/§7.2 |
@@ -335,8 +344,10 @@ Applied to whatever LLR an observation would otherwise contribute, by the role i
 | Role | Multiplier |
 |---|---|
 | AlbumArtist | 1.0× |
-| Artist (performer) | 0.85× |
-| Composer, undecomposed/other relationship | 0.5× |
+| Artist (performer) | 1.0× |
+| Composer, undecomposed/other relationship | 1.0× |
+
+**Correction (confirmed 2026-07-12): default is neutral 1.0× across all three tiers.** An earlier version of this table listed non-neutral multipliers (Artist 0.85×, Composer 0.5×); that was stale and contradicted the actual confirmed decision — difficulty in this system is in *generating* a composer-only candidate at all (§5.3 Strategy C), not in discounting evidence once a candidate is found. `ScoringConfig.RoleWeights` remains a live, editable config surface (§10.3) so this can still be tuned later — it is neutral by default, not hardcoded to be neutral.
 
 ### 6.3 Corroboration Tiers
 
@@ -344,6 +355,8 @@ Categorical, not continuous — encode as a specific evidence type with the tier
 - **Tier 1**: Emby's Artist + Track + Album all agree with MusicBrainz. Near-decisive alone.
 - **Tier 2**: Artist + Track agree, no album corroboration. Strong, needs at least one supporting signal for auto-accept.
 - **Tier 3**: single field match only. Weak, background support.
+
+**Match-quality multiplier (confirmed 2026-07-12, applies to all three tiers above):** before role-weighting (§6.2) is applied, multiply the tier's LLR value by `ScoringConfig.NameMatchWeight` (default 1.0) if the recording result's artist-credit matched the candidate's primary name, or `ScoringConfig.AliasMatchWeight` (default 0.9) if it matched only via one of the candidate's registered aliases (`NameDistanceEvidenceCollector`'s `MatchedViaAlias` flag, §5.4). This is the entirety of how alias-vs-name match quality affects scoring — see §5.3 Stage 2.
 
 ### 6.4 Decision Thresholds
 
@@ -558,17 +571,21 @@ Row-shaped tuning data, one entry per §6 value, defaulting to the values listed
 
 ```
 ScoringConfig
-├── CandidateGeneration.StrategyA/B.MaxCandidates, DurationToleranceSeconds, ArtistCandidateMinScore
+├── CandidateGeneration.StrategyA/B.MaxCandidates, DurationToleranceSeconds
+├── CandidateGeneration.ArtistCandidateMinScore: int (default 0, inert — MB's own C1 relevance score, §5.3/§5.4, reserved)
+├── CandidateGeneration.ArtistCandidateMaxEditDistance: (Stage 1 admission gate, §5.3 — needs real-data tuning, no default yet asserted as correct)
+├── CandidateGeneration.NameNormalizationRules[]   -- editable replacement/allowance table, §5.3 Stage 1 (strip "The", fold &/and/+, strip apostrophes, strip feat/vs/etc., seed list per Project Log)
+├── NameMatchWeight: double (default 1.0), AliasMatchWeight: double (default 0.9)   -- Stage 2 corroboration multiplier, §5.3/§6.3
 ├── BucketCeiling { AlbumArtist: 3, Artist: 4, Composer: 6 }
-├── ComputeStaticEvidenceOncePerCandidate: bool
-├── PreferDifferentAlbum, PreferSingleCreditTracks, PreferDifferentTrackTitle: bool
+├── ComputeAlbumMatchPrecursorOncePerCandidate: bool   -- static evidence rule now applies only to §5.2's precursor, not to name-similarity (retired, §6.1)
+├── PreferDifferentAlbum, PreferSingleCreditTracks, PreferDifferentTrackTitle, PreferLongerTrackTitles: bool
 ├── PreferAlbumTrackCountBelow: int (default 20)
 ├── AutoAcceptThreshold, AutoRejectThreshold, MinMarginOverRunnerUp
 ├── EvidenceWeights[]   -- one row per §6.1 evidence type
-├── RoleWeights { AlbumArtist, Artist, Composer }
+├── RoleWeights { AlbumArtist: 1.0, Artist: 1.0, Composer: 1.0 }   -- neutral default, §6.2
 ├── ComposerRelationshipWeights { writer, producer, arranger, other }
 ├── AlbumMatchWeights { distinctiveTitle, genericTitle }
-└── JointEvidencePairs[]   -- correlated-pair overrides, §5.4
+└── JointEvidencePairs[]   -- correlated-pair overrides, §5.4 (album-match/full-triple supersession only; alias+recording joint pair retired, §6.1)
 ```
 
 ---
