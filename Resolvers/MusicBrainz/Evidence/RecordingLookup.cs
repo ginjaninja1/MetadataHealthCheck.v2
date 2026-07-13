@@ -4,13 +4,8 @@ using MetadataHealthCheck.v2.Sources.Emby;
 namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 {
     /// <summary>
-    /// Which rung of the fallback ladder actually produced a hit for a given
-    /// (candidate, track) lookup. Diagnostic-only for now, per the Project Log's
-    /// own honest-gap note: not yet used to drive any scoring decision, and until
-    /// this file existed, no fixture case varied its result by the artistName
-    /// parameter, so RungReached could never be observed as anything but
-    /// TrackArtistAlbum or NotFound. FixtureMusicBrainzApiClient's "Ladder
-    /// Fallback Case" (added alongside this file) exercises TrackOnly directly.
+    /// Which rung of the fallback ladder actually produced a trustworthy hit for a
+    /// given (candidate, track) lookup.
     /// </summary>
     public enum RecordingLookupRung
     {
@@ -24,37 +19,33 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     {
         public MbRecordingResult? Recording { get; set; }
         public RecordingLookupRung RungReached { get; set; } = RecordingLookupRung.NotFound;
+
+        // Added 2026-07-13: whether this hit matched the candidate's primary MB name
+        // (false) or only a registered alias (true), per
+        // NameDistanceEvidenceCollector.EvaluateRecordingMatch. Drives
+        // EvidenceRecord.MatchedViaAlias -> ScoringConfig.NameMatchWeight/
+        // AliasMatchWeight at scoring time (§5.3/§6.3). Meaningless when Recording is
+        // null (defaults false).
+        public bool MatchedViaAlias { get; set; }
     }
 
     /// <summary>
     /// Shared, memoized per-(candidate, track) recording lookup (§7.2 C3/C4).
-    /// Built 2026-07-12 per the coding checklist in V2_Project_Log.md, replacing
-    /// what would otherwise be an independent SearchRecording call in every
-    /// evidence collector that needs to confirm a candidate against a specific
-    /// track. WorkRelationshipEvidenceCollector is refactored onto this in the
-    /// same unit of work. CorroborationTierEvidenceCollector,
-    /// RecordingRelationshipEvidenceCollector, and AlbumMatchEvidenceCollector are
-    /// NOT built yet (an earlier log entry claimed otherwise; ground-truth
-    /// verification on 2026-07-12 found none of the three exist in the repo) —
-    /// they remain separate, not-yet-started follow-up work, but should take this
-    /// same shared instance once they exist rather than each rolling their own
-    /// SearchRecording call.
+    /// Used both by SoftBucketStrategy (Stage 2 per-candidate confirmation, §5.3) and
+    /// by per-observation evidence collectors (WorkRelationship, CorroborationTier)
+    /// that need to confirm a candidate against a specific track.
     ///
-    /// Fallback ladder (§7.2, settled 2026-07-12): track+artist+album ->
-    /// track+album -> track alone. There is no way to fully avoid the risk that a
-    /// wrong album or wrong artist-name text degrades a fallback rung's result
-    /// quality — this is a known, accepted, low-probability-in-practice risk, not
-    /// solved here. The real safety net is NameDistanceEvidenceCollector's
-    /// downstream rejection of poor name matches, already proven against exactly
-    /// this shape of risk by the Gus Black/Del Serino cases (a spurious candidate
-    /// with genuine Tier 1 corroboration under the wrong MBID is still correctly
-    /// rejected on name grounds).
+    /// Fallback ladder (§7.2/§5.4): track+artist+album -> track+album -> track alone.
+    /// At each rung, a hit is only accepted if
+    /// NameDistanceEvidenceCollector.EvaluateRecordingMatch judges the recording's
+    /// artist-credit text trustworthy against this candidate's name/aliases — this is
+    /// the real safety net against a wrong-album/wrong-artist-text fallback rung
+    /// producing a false positive (§5.4). A hit judged TooPoorToTrust at one rung is
+    /// treated as a miss and the ladder continues to the next rung, not returned.
     ///
     /// Memoization is per RecordingLookup instance, per (candidateMbid, trackId)
     /// pair, for the lifetime of one shared instance — constructed once in
-    /// MusicBrainzArtistResolverPlugin and passed to every collector that needs it,
-    /// so only the first collector to ask about a given (candidate, track) pair in
-    /// a sampler round actually triggers a MusicBrainz call.
+    /// MusicBrainzArtistResolverPlugin and passed to every collector that needs it.
     /// </summary>
     public class RecordingLookup
     {
@@ -82,29 +73,50 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         private RecordingLookupResult Resolve(string candidateMbid, EmbyTrackCredit track, string? artistName)
         {
-            // Rung 1: track + artist + album — the tightest, most specific query.
             if (artistName != null)
             {
                 var rec = FindForCandidate(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, artistName));
-                if (rec != null)
-                    return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.TrackArtistAlbum };
+                var evaluated = EvaluateHit(candidateMbid, rec, RecordingLookupRung.TrackArtistAlbum);
+                if (evaluated != null) return evaluated;
             }
 
-            // Rung 2: track + album (drop artist name).
             {
                 var rec = FindForCandidate(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, null));
-                if (rec != null)
-                    return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.TrackAlbum };
+                var evaluated = EvaluateHit(candidateMbid, rec, RecordingLookupRung.TrackAlbum);
+                if (evaluated != null) return evaluated;
             }
 
-            // Rung 3: track title alone (drop both artist and album).
             {
                 var rec = FindForCandidate(candidateMbid, _client.SearchRecording(track.TrackName, null, null));
-                if (rec != null)
-                    return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.TrackOnly };
+                var evaluated = EvaluateHit(candidateMbid, rec, RecordingLookupRung.TrackOnly);
+                if (evaluated != null) return evaluated;
             }
 
             return new RecordingLookupResult { Recording = null, RungReached = RecordingLookupRung.NotFound };
+        }
+
+        // Returns null if there's no recording at this rung at all, OR if there is one
+        // but it's judged too poor a name match to trust (§5.4) — both cases mean
+        // "keep falling through the ladder", which is why this doesn't distinguish
+        // them to the caller.
+        private RecordingLookupResult? EvaluateHit(string candidateMbid, MbRecordingResult? rec, RecordingLookupRung rung)
+        {
+            if (rec == null)
+                return null;
+
+            var candidateName = _client.GetArtistDisplayName(candidateMbid);
+            var candidateAliases = _client.GetArtistAliases(candidateMbid);
+            var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
+
+            if (outcome == NameMatchOutcome.TooPoorToTrust)
+                return null;
+
+            return new RecordingLookupResult
+            {
+                Recording = rec,
+                RungReached = rung,
+                MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
+            };
         }
 
         private static MbRecordingResult? FindForCandidate(string candidateMbid, IReadOnlyList<MbRecordingResult> recordings)

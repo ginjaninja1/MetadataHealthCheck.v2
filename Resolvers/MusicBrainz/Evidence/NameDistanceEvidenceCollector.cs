@@ -12,6 +12,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     /// </summary>
     public class NameDistanceEvidenceCollector : IEvidenceCollector<EmbyArtist>
     {
+        // Existing Poor/Neutral boundary, extracted as a named constant 2026-07-13
+        // rather than changed — same value (0.7), now reused by EvaluateRecordingMatch
+        // below as the "too poor a match to trust at any rung" floor (§5.4), which is a
+        // distinct use from this collector's own (currently still-wired, still open
+        // per Project Log) role as scored evidence.
+        private const double PoorMatchFloor = 0.7;
+
         private readonly IMusicBrainzApiClient _client;
 
         public NameDistanceEvidenceCollector(IMusicBrainzApiClient client) => _client = client;
@@ -25,7 +32,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
             string bucket = distance >= 0.95 ? "NameSimilarity.NearExact"
                            : distance >= 0.85 ? "NameSimilarity.Close"
-                           : distance < 0.7 ? "NameSimilarity.Poor"
+                           : distance < PoorMatchFloor ? "NameSimilarity.Poor"
                            : "NameSimilarity.Neutral"; // between 0.7 and 0.85 — no catalog entry, contributes 0
 
             return new EvidenceRecord
@@ -60,7 +67,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             return 1.0 - (double)dist / maxLen;
         }
 
-        private static int Levenshtein(string a, string b)
+        // Added 2026-07-13: raw edit distance, exposed (was private) for
+        // SoftBucketStrategy's Stage 1 admission gate (§5.3), which needs the actual
+        // character-count distance against ArtistCandidateMaxEditDistance, not a
+        // normalized 0-1 ratio. Same algorithm NormalizedSimilarity already used
+        // internally — visibility change only, no behavior change.
+        internal static int Levenshtein(string a, string b)
         {
             var d = new int[a.Length + 1, b.Length + 1];
             for (int i = 0; i <= a.Length; i++) d[i, 0] = i;
@@ -75,5 +87,36 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             }
             return d[a.Length, b.Length];
         }
+
+        // Added 2026-07-13 for RecordingLookup (§5.4): given a RecordingLookup hit's raw
+        // artist-credit text, decide whether it's (a) a genuine match against the
+        // candidate's primary name, (b) a genuine match against one of its registered
+        // aliases only (MatchedViaAlias — discounted via AliasMatchWeight at scoring
+        // time, §6.3), or (c) too poor a match to trust at all — the real safety net
+        // against a wrong-album/wrong-artist-text fallback rung (§5.4), reusing this
+        // collector's existing Poor-match floor rather than a second calibration.
+        internal static NameMatchOutcome EvaluateRecordingMatch(string candidateName, IReadOnlyList<string> candidateAliases, string artistCreditText)
+        {
+            if (NormalizedSimilarity(candidateName, artistCreditText) >= PoorMatchFloor)
+                return NameMatchOutcome.MatchedViaName;
+
+            foreach (var alias in candidateAliases)
+            {
+                if (NormalizedSimilarity(alias, artistCreditText) >= PoorMatchFloor)
+                    return NameMatchOutcome.MatchedViaAlias;
+            }
+
+            return NameMatchOutcome.TooPoorToTrust;
+        }
+    }
+
+    // Outcome of NameDistanceEvidenceCollector.EvaluateRecordingMatch — a small,
+    // dedicated enum rather than reusing the NameSimilarity.* bucket strings, since
+    // this is a reject/accept decision (§5.4), not a scored evidence type (§6.1).
+    internal enum NameMatchOutcome
+    {
+        MatchedViaName,
+        MatchedViaAlias,
+        TooPoorToTrust,
     }
 }

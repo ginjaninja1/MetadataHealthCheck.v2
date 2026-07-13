@@ -7,10 +7,11 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 {
     /// <summary>
     /// Work-level relationship evidence (writer/composer/lyricist), sourced from
-    /// work-rels+work-level-rels (§5.4/§7.2 C5). Decomposed by actual relationship
-    /// type, not treated as one undifferentiated "Composer matched" fact.
-    /// Recording-level relations (producer/arranger) are a separate collector,
-    /// deferred to Phase 2's full evidence set per §21.
+    /// GetRelationships filtered to RelationshipLevel.Work (§5.4/§7.2 C5). Decomposed
+    /// by actual relationship type, not treated as one undifferentiated "Composer
+    /// matched" fact. Recording-level relations (producer/arranger) are
+    /// RecordingRelationshipEvidenceCollector's job, sourced from the same call
+    /// filtered to RelationshipLevel.Recording instead.
     ///
     /// Converted from IEvidenceCollector to IObservationEvidenceCollector alongside
     /// the Sequential Sampler (§5.5, §21 phase 2): this used to loop over every one
@@ -52,8 +53,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             var rec = lookup.Recording;
             if (rec == null) return null;
 
-            var rels = _client.GetWorkRelationships(rec.RecordingId)
-                .Where(r => WorkLevelTypes.Contains(r.RelationshipType) && r.ArtistMbid == candidate.TargetId)
+            var rels = _client.GetRelationships(rec.RecordingId)
+                .Where(r => r.Level == RelationshipLevel.Work && WorkLevelTypes.Contains(r.RelationshipType) && r.ArtistMbid == candidate.TargetId)
                 .ToList();
 
             if (rels.Count == 0) return null;

@@ -44,6 +44,12 @@ namespace MetadataHealthCheck.v2.Core.Model
         public string? SourceTrackId { get; set; }
         public string? AlbumId { get; set; }                      // for corroboration-tier supersession, §6.3
         public string? RelationshipType { get; set; }             // writer|producer|arranger|... , §7.2
+        // Raw fact only (§5.4's "never pre-baked LLR" rule) -- whether a Corroboration
+        // Tier hit's artist-credit text matched the candidate's primary name (false) or
+        // only one of its registered aliases (true). Added 2026-07-13 alongside
+        // CorroborationTierEvidenceCollector; the actual NameMatchWeight/AliasMatchWeight
+        // multiplier this drives is applied by the scorer, not baked in here (§5.3/§6.3).
+        public bool MatchedViaAlias { get; set; }
         public string Rationale { get; set; } = "";               // human-readable sentence — always populated, §5.6
     }
 

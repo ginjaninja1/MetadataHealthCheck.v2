@@ -2,7 +2,7 @@
 ## Build Specification
 
 *This is the implementation spec. It supersedes casual reasoning from any prior discussion — if you need the rationale behind a decision, a separate design-history document exists, but this document is authoritative for what to build.*
-
+ 
 ---
 
 ## 1. Purpose & Scope

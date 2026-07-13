@@ -41,16 +41,25 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
             EvidenceCollectors = new IEvidenceCollector<EmbyArtist>[]
             {
                 new NameDistanceEvidenceCollector(client),
+                new AlbumMatchEvidenceCollector(client), // §5.2 precursor
             };
 
             ObservationEvidenceCollectors = new IObservationEvidenceCollector<EmbyArtist>[]
             {
                 new WorkRelationshipEvidenceCollector(client, recordingLookup),
-                // AliasEvidenceCollector, RecordingRelationshipEvidenceCollector,
-                // AlbumMatchEvidenceCollector, CorroborationTierEvidenceCollector
-                // arrive alongside BayesianBeliefScorer as a follow-up step, §21. None of
-                // these three exist in the repo yet as of this commit (ground-truth
-                // verified 2026-07-12) — an earlier log entry claiming otherwise was wrong.
+                new RecordingRelationshipEvidenceCollector(client, recordingLookup),
+                new CorroborationTierEvidenceCollector(recordingLookup),
+                // NOT built: AliasEvidenceCollector.cs, which §11.2's file tree still
+                // lists as planned. Left out deliberately, not just not-yet-started —
+                // §6.1/§5.3's own retirement notes say alias-match is no longer a
+                // standalone evidence type at all; its function is now fully absorbed
+                // into Stage 1 (admission gate, zero LLR) and Stage 2
+                // (MatchedViaAlias -> NameMatchWeight/AliasMatchWeight multiplier on
+                // Corroboration Tier evidence, both built this session). Building a
+                // separate AliasEvidenceCollector alongside that would double-count or
+                // contradict it. Flagged as an open spec contradiction, not resolved
+                // silently either way — worth a direct answer before touching §11.2's
+                // file tree.
             };
 
             ObservationUnitProvider = new EmbyArtistObservationUnitProvider();
