@@ -12,6 +12,14 @@ namespace MetadataHealthCheck.v2.Core.Model
         public double MinMarginOverRunnerUp { get; set; } = 2.0;
         public string Version { get; set; } = "phase2-default";
 
+        // Admission-gate floor on MusicBrainz's own artist-search text-relevance score
+        // (§5.3/§5.4), added 2026-07-13 alongside SoftBucketStrategy's artist-search-first
+        // rewrite. The gate itself is real and exercised now (SoftBucketStrategy actually
+        // compares each SearchArtist result's Score against this); the default of 0 just
+        // means every real MB result passes for now, since there's no output yet to
+        // calibrate a real cutoff against. Not a stub -- tune this once there's real data.
+        public int ArtistCandidateMinScore { get; set; } = 0;
+
         // Sampling budget per bucket (§5.5) -- a ceiling, not a target. The sampler
         // stops as soon as confidence crosses a bound, which may happen well before
         // a bucket's ceiling is reached (§18's worked example: AlbumArtist ceiling of

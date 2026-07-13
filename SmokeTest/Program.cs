@@ -58,7 +58,7 @@ var logger = new StructuredLogger();
 var repo = new InMemoryMatchRepository();
 var scoringConfig = new ScoringConfig();
 
-var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache);
+var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfig);
 var engine = new ResolutionEngine(plugin, repo, identityCache, scoringConfig, logger);
 
 var emby = new FixtureEmbyLibraryReader();

@@ -39,7 +39,7 @@ namespace MetadataHealthCheck.v2.Fixtures
                         Mbid = MbidX, Name = "Sarah Vaughan", Score = 100,
                         Aliases = new List<string> { "Sarah Vahghan", "Sarah Voughan", "Sara Vaughan", "Vaughan Sarah", "Sarah Vaughn" },
                     },
-                    new MbArtistResult { Mbid = MbidY, Name = "Sarah Vaughan", Disambiguation = "different, lesser-known artist", Score = 90 },
+                    new MbArtistResult { Mbid = MbidY, Name = "Sara Vaughn", Disambiguation = "different, lesser-known artist", Score = 90 },
                 };
             }
 
@@ -60,15 +60,19 @@ namespace MetadataHealthCheck.v2.Fixtures
             if (name.Equals("Del Serino", StringComparison.OrdinalIgnoreCase))
                 return new List<MbArtistResult> { new MbArtistResult { Mbid = MbidDelSerino, Name = "Del Serino", Score = 100 } };
 
-            // NOTE: none of the branches above are actually consumed by any currently-
-            // wired strategy -- SoftBucketStrategy and AnchoredRecordingStrategy both
-            // generate candidates exclusively from SearchRecording's ArtistMbid (the
-            // recording/performer credit), never from this method. SearchArtist is
-            // reserved for a future name/alias-based candidate generation path that
-            // doesn't exist yet. This is exactly why Gus Black and Del Serino (both
-            // composer-only, no recordings of their own as performer) can't be
-            // resolved today regardless of what this method returns -- see the
-            // SearchRecording/GetWorkRelationships comments below for the real story.
+            // UPDATED 2026-07-13: SearchArtist is no longer dead code. SoftBucketStrategy's
+            // artist-search-first rewrite now calls this directly as its primary candidate
+            // source, admitting a result only if (a) Score clears ScoringConfig's
+            // ArtistCandidateMinScore and (b) name-or-alias is close enough (via
+            // NameDistanceEvidenceCollector's own distance metric), then confirming via
+            // RecordingLookup against this artist's real tracks before yielding a Candidate.
+            // This is exactly why Gus Black and Del Serino still can't be resolved today:
+            // each DOES get a real SearchArtist(name) hit (their own MBID passes the name
+            // check), but RecordingLookup finds no matching recording for that MBID on any
+            // of their tracks (the real recording-artist-credit is A Fine Frenzy / Adele
+            // respectively) -- so neither candidate clears confirmation and 0 candidates are
+            // generated for either artist now, not 1 spurious one as before. See
+            // SearchRecording/GetWorkRelationships comments below for the underlying facts.
 
             return Array.Empty<MbArtistResult>();
         }

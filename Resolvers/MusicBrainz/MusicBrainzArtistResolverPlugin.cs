@@ -1,4 +1,5 @@
 using MetadataHealthCheck.v2.Core.Interfaces;
+using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies;
@@ -21,18 +22,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         public IBeliefScorer Scorer { get; }
         public IDecisionGate DecisionGate { get; }
 
-        public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, IIdentityCache identityCache)
+        public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, IIdentityCache identityCache, ScoringConfig scoringConfig)
         {
             // Shared across every collector that needs to confirm a candidate against a
-            // specific track (§7.2 C3/C4), added 2026-07-12 alongside RecordingLookup.cs.
-            // Constructed once per resolver-plugin instance so its per-(candidate,track)
-            // memoization actually pays off once more than one collector shares it.
+            // specific track (§7.2 C3/C4). Now also used by SoftBucketStrategy itself for
+            // per-candidate confirmation (2026-07-13, artist-search-first rewrite), not just
+            // by evidence collectors — so its per-(candidate,track) memoization pays off
+            // across candidate generation AND scoring within one resolution run.
             var recordingLookup = new RecordingLookup(client);
 
             Strategies = new ICandidateGenerationStrategy<EmbyArtist>[]
             {
-                new AnchoredRecordingStrategy(client, identityCache),  // Strategy A, priority 10
-                new SoftBucketStrategy(client),                        // Strategy B, priority 30
+                new AnchoredRecordingStrategy(client, identityCache),          // Strategy A, priority 10
+                new SoftBucketStrategy(client, recordingLookup, scoringConfig), // Strategy B, priority 30 — artist-search-first
                 // Strategy C (borrowed anchor) arrives in Phase 3 alongside co-occurrence graph, §21
             };
 
