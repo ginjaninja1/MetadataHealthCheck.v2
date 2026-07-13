@@ -6,6 +6,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         public string Name { get; set; } = "";
         public string? Disambiguation { get; set; }
         public int Score { get; set; }               // MB's own text-relevance score — pool-admission filter ONLY, §5.4
+
+        // Added 2026-07-12 (coding checklist item 1): real ws/2/artist search responses
+        // return registered aliases inline on each result, no extra inc= parameter
+        // needed (confirmed against real MusicBrainz data). Needed for Stage 1's
+        // admission-gate name-or-alias matching (§5.3) once SoftBucketStrategy is
+        // reworked onto artist-search-first — not yet consumed by any strategy as of
+        // this commit, but the model gap had to close before that work could start.
+        public List<string> Aliases { get; set; } = new();
     }
 
     public class MbAlbumTitle
@@ -42,7 +50,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
     {
         IReadOnlyList<MbArtistResult> SearchArtist(string name);                                  // C1
         IReadOnlyList<MbAlbumTitle> GetReleaseGroupTitles(string artistMbid);                       // C2 (subset)
-        IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle);     // C3/C4
+
+        // Extended 2026-07-12 with an artistName parameter (nullable, defaults to null so
+        // pre-existing call sites don't need every caller touched at once) to support
+        // RecordingLookup.cs's three-rung fallback ladder: track+artist+album -> track+album
+        // -> track alone. Existing callers (AnchoredRecordingStrategy, SoftBucketStrategy)
+        // still pass null for artistName for now — widening candidate-generation strategies
+        // onto the ladder themselves is separate follow-up work, out of this unit's scope.
+        IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, string? artistName = null);     // C3/C4
+
         IReadOnlyList<MbWorkRelationship> GetWorkRelationships(string recordingId);                   // C5 (subset)
 
         // Phase 1 addition, not literally in §7.2's catalog: NameDistanceEvidenceCollector

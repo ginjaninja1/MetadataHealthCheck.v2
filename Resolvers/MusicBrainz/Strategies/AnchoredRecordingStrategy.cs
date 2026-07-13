@@ -33,7 +33,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
 
             foreach (var track in source.Tracks)
             {
-                var recordings = _client.SearchRecording(track.TrackName, track.AlbumName);
+                var recordings = _client.SearchRecording(track.TrackName, track.AlbumName, null); // artistName not wired in here yet — follow-up work
                 foreach (var rec in recordings.Where(r => r.ArtistMbid == existing.TargetId))
                 {
                     yield return new Candidate

@@ -1,8 +1,10 @@
-using MetadataHealthCheck.v2.Core.Engine;
+ï»¿using MetadataHealthCheck.v2.Core.Engine;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Diagnostics;
 using MetadataHealthCheck.v2.Fixtures;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz;
+using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
+using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
@@ -74,27 +76,27 @@ Console.WriteLine($"\nDecision: target={result.TargetId} status={result.Status} 
 Assert(result.TargetId == FixtureMusicBrainzApiClient.MbidX, "correct candidate (X) selected as top match");
 Assert(result.Status is "auto_accept" or "needs_review", "decision status is auto_accept or needs_review (not auto_reject) for the clearly-better candidate");
 
-// §18 worked-example reproduction (§21 phase 2's stated goal): this fixture case
-// (FixtureEmbyLibraryReader.cs) IS §18's exact setup -- single AlbumArtist-tier
+// ï¿½18 worked-example reproduction (ï¿½21 phase 2's stated goal): this fixture case
+// (FixtureEmbyLibraryReader.cs) IS ï¿½18's exact setup -- single AlbumArtist-tier
 // track "Autumn Leaves"/"Crazy and Mixed Up", two candidates X (correct) and Y.
-// Structural behavior matches §18: auto-accept, correct candidate, single
+// Structural behavior matches ï¿½18: auto-accept, correct candidate, single
 // observation, comfortably over MinMarginOverRunnerUp. The absolute LLR numbers
-// do NOT match §18's own illustrative math, for two found-during-implementation
+// do NOT match ï¿½18's own illustrative math, for two found-during-implementation
 // reasons, both worth a second look rather than silently accepted:
-//   1. §18's prose never mentions a WorkRelationship credit, but this fixture's
+//   1. ï¿½18's prose never mentions a WorkRelationship credit, but this fixture's
 //      "Autumn Leaves" genuinely carries one for X (+2.5) -- so X's real total
-//      (7.5) comes out higher than §18's stated 5.0.
-//   2. §18 assumes Y gets a -2.0 penalty for "no track/album match" -- but no
-//      such negative-evidence type exists anywhere in §6.1's catalog. This
+//      (7.5) comes out higher than ï¿½18's stated 5.0.
+//   2. ï¿½18 assumes Y gets a -2.0 penalty for "no track/album match" -- but no
+//      such negative-evidence type exists anywhere in ï¿½6.1's catalog. This
 //      fixture's Y-recording is legitimately attributed to Y's own MBID, just
 //      weakly (Tier 3, neither title field corroborates), giving Y a small
-//      *positive* +0.5 rather than a negative figure. §18's illustrative -2.0
+//      *positive* +0.5 rather than a negative figure. ï¿½18's illustrative -2.0
 //      doesn't correspond to any evidence type that was actually built.
-// Margin (7.0) happens to match §18's stated 7.0 anyway -- both totals moved up
+// Margin (7.0) happens to match ï¿½18's stated 7.0 anyway -- both totals moved up
 // by a similar amount, which is a coincidence of this fixture's specific numbers,
-// not a sign the underlying math matches §18's intent point-for-point.
-Assert(Math.Abs(result.Margin - 7.0) < 0.01, $"margin over runner-up matches §18's stated 7.0 nats (got {result.Margin:F2}) -- coincidental given the two divergences noted above, not exact reproduction of §18's own per-candidate math");
-Assert(result.Status == "auto_accept", "§18's setup resolves to auto_accept, as the worked example describes");
+// not a sign the underlying math matches ï¿½18's intent point-for-point.
+Assert(Math.Abs(result.Margin - 7.0) < 0.01, $"margin over runner-up matches ï¿½18's stated 7.0 nats (got {result.Margin:F2}) -- coincidental given the two divergences noted above, not exact reproduction of ï¿½18's own per-candidate math");
+Assert(result.Status == "auto_accept", "ï¿½18's setup resolves to auto_accept, as the worked example describes");
 
 if (result.Status == "auto_accept")
 {
@@ -349,6 +351,58 @@ var delSerinoArtist = new EmbyArtist
 var delSerinoResult = engine.ResolveOne(delSerinoArtist, context);
 Assert(delSerinoResult.Status == "needs_review", $"Del Serino lands on needs_review, same structural gap as Gus Black (got {delSerinoResult.Status})");
 Assert(delSerinoResult.TargetId != FixtureMusicBrainzApiClient.MbidDelSerino, "Del Serino's own MBID is never considered as a candidate today, for the same reason as Gus Black");
+
+Console.WriteLine("\n=== MbArtistResult.Aliases (coding checklist item 1) ===");
+Console.WriteLine("Confirms the field exists and the fixture actually populates real");
+Console.WriteLine("MusicBrainz-confirmed aliases for Sarah Vaughan -- not yet consumed by");
+Console.WriteLine("any strategy (SoftBucketStrategy's artist-search-first rewrite is the");
+Console.WriteLine("next increment), so this only proves the data is real and reachable.\n");
+
+var sarahVaughanArtistResults = mbClient.SearchArtist("Sarah Vaughan");
+var xResult = sarahVaughanArtistResults.First(a => a.Mbid == FixtureMusicBrainzApiClient.MbidX);
+Assert(xResult.Aliases.Count == 5, $"Sarah Vaughan (X) carries 5 registered aliases (got {xResult.Aliases.Count})");
+Assert(xResult.Aliases.Contains("Sarah Vaughn"), "alias list includes the common single-h misspelling \"Sarah Vaughn\"");
+var yResult = sarahVaughanArtistResults.First(a => a.Mbid == FixtureMusicBrainzApiClient.MbidY);
+Assert(yResult.Aliases.Count == 0, "the rival same-named artist (Y) carries no aliases of its own");
+
+Console.WriteLine("\n=== RecordingLookup three-rung fallback ladder (coding checklist item 2/3) ===");
+Console.WriteLine("RecordingLookup.cs did not exist until this session (ground-truth");
+Console.WriteLine("verification, 2026-07-12) despite an earlier, unverified log entry");
+Console.WriteLine("claiming otherwise. Exercised directly here, independent of any");
+Console.WriteLine("evidence collector, against two fixture cases: a rung-1 hit (existing");
+Console.WriteLine("Autumn Leaves data) and a rung-3-only hit (new, purpose-built case).\n");
+
+var recordingLookup = new RecordingLookup(mbClient);
+
+var autumnLeavesTrack = new EmbyTrackCredit
+{
+    TrackId = "track-autumn-leaves-ladder-check",
+    TrackName = "Autumn Leaves",
+    AlbumName = "Crazy and Mixed Up",
+    AlbumId = "album-crazy-and-mixed-up",
+    Role = "AlbumArtist",
+};
+var rung1Lookup = recordingLookup.Lookup(FixtureMusicBrainzApiClient.MbidX, autumnLeavesTrack, artistName: "Sarah Vaughan");
+Assert(rung1Lookup.RungReached == RecordingLookupRung.TrackArtistAlbum, $"Autumn Leaves resolves on rung 1 (track+artist+album), got {rung1Lookup.RungReached}");
+Assert(rung1Lookup.Recording?.RecordingId == "rec-autumn-leaves-X", "rung 1 lookup returns the correct recording id");
+
+var ladderFallbackTrack = new EmbyTrackCredit
+{
+    TrackId = "track-ladder-fallback-check",
+    TrackName = "Ladder Fallback Case",
+    AlbumName = "A Different Listed Album", // deliberately wrong -- rungs 1/2 must both miss
+    AlbumId = "album-ladder-fallback",
+    Role = "AlbumArtist",
+};
+var rung3Lookup = recordingLookup.Lookup(FixtureMusicBrainzApiClient.MbidX, ladderFallbackTrack, artistName: "Sarah Vaughan");
+Assert(rung3Lookup.RungReached == RecordingLookupRung.TrackOnly, $"purpose-built case only resolves on rung 3 (track alone), got {rung3Lookup.RungReached}");
+Assert(rung3Lookup.Recording?.RecordingId == "rec-ladder-fallback", "rung 3 lookup returns the correct recording id");
+
+var noHitLookup = recordingLookup.Lookup("mbid-nobody", ladderFallbackTrack, artistName: null);
+Assert(noHitLookup.RungReached == RecordingLookupRung.NotFound && noHitLookup.Recording == null, "a candidate with no matching recording at any rung correctly returns NotFound");
+
+var cachedLookup = recordingLookup.Lookup(FixtureMusicBrainzApiClient.MbidX, autumnLeavesTrack, artistName: "Sarah Vaughan");
+Assert(ReferenceEquals(rung1Lookup, cachedLookup), "repeat lookup for the same (candidate, track) pair returns the memoized instance, not a recomputed one");
 
 Console.WriteLine($"\n=== {(failures == 0 ? "ALL PASS" : failures + " FAILURE(S)")} ===");
 

@@ -22,12 +22,17 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     public class WorkRelationshipEvidenceCollector : IObservationEvidenceCollector<EmbyArtist>
     {
         private readonly IMusicBrainzApiClient _client;
+        private readonly RecordingLookup _recordingLookup;
         private static readonly HashSet<string> WorkLevelTypes = new(StringComparer.OrdinalIgnoreCase)
         {
             "writer", "composer", "lyricist", "librettist"
         };
 
-        public WorkRelationshipEvidenceCollector(IMusicBrainzApiClient client) => _client = client;
+        public WorkRelationshipEvidenceCollector(IMusicBrainzApiClient client, RecordingLookup recordingLookup)
+        {
+            _client = client;
+            _recordingLookup = recordingLookup;
+        }
 
         public string EvidenceType => "WorkRelationship";
 
@@ -35,15 +40,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         {
             // This collector needs a recording id, which the AnchoredRecordingStrategy/
             // SoftBucketStrategy don't currently thread through onto Candidate (the
-            // spec's Candidate model, §4, doesn't carry one either). Phase 1 stand-in:
-            // re-derive the recording via a track search matched to this candidate's
-            // artist mbid. Revisit if this proves too indirect once the Corroboration/
-            // Album-match collectors need the same recording id.
+            // spec's Candidate model, §4, doesn't carry one either). Re-derive the
+            // recording via the shared RecordingLookup (2026-07-12), matched to this
+            // candidate's artist mbid, instead of an inline SearchRecording call — this
+            // also gives the lookup a chance to be memoized once other collectors
+            // (Corroboration/AlbumMatch/RecordingRelationship) share the same instance.
             if (unit is not EmbyTrackObservationUnit trackUnit) return null;
             var track = trackUnit.Track;
 
-            var recordings = _client.SearchRecording(track.TrackName, track.AlbumName);
-            var rec = recordings.FirstOrDefault(r => r.ArtistMbid == candidate.TargetId);
+            var lookup = _recordingLookup.Lookup(candidate.TargetId, track, artistName: null);
+            var rec = lookup.Recording;
             if (rec == null) return null;
 
             var rels = _client.GetWorkRelationships(rec.RecordingId)

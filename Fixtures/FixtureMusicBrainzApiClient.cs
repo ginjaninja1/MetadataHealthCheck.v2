@@ -31,7 +31,14 @@ namespace MetadataHealthCheck.v2.Fixtures
             {
                 return new List<MbArtistResult>
                 {
-                    new MbArtistResult { Mbid = MbidX, Name = "Sarah Vaughan", Score = 100 },
+                    // Aliases confirmed real, 2026-07-12 design review, against the actual
+                    // MusicBrainz entry (mbid 351d8bdf-33a1-45e2-8c04-c85fad20da55) -- these
+                    // are spelling variants of the SAME person, not a rival candidate.
+                    new MbArtistResult
+                    {
+                        Mbid = MbidX, Name = "Sarah Vaughan", Score = 100,
+                        Aliases = new List<string> { "Sarah Vahghan", "Sarah Voughan", "Sara Vaughan", "Vaughan Sarah", "Sarah Vaughn" },
+                    },
                     new MbArtistResult { Mbid = MbidY, Name = "Sarah Vaughan", Disambiguation = "different, lesser-known artist", Score = 90 },
                 };
             }
@@ -74,8 +81,34 @@ namespace MetadataHealthCheck.v2.Fixtures
             return new List<MbAlbumTitle>(); // Y has no overlapping albums
         }
 
-        public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle)
+        public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, string? artistName = null)
         {
+            // Built specifically to exercise RecordingLookup's three-rung fallback ladder
+            // end to end (2026-07-12): rungs 1 (track+artist+album) and 2 (track+album)
+            // both come up empty here on purpose -- only rung 3 (track title alone) finds
+            // anything. Previously flagged in RecordingLookup.cs's own comments as an
+            // honest, unexercised gap ("no fixture branch varies its result by the
+            // artistName parameter") -- this case closes that gap.
+            if (trackTitle.Equals("Ladder Fallback Case", StringComparison.OrdinalIgnoreCase))
+            {
+                if (artistName == null && albumTitle == null)
+                {
+                    return new List<MbRecordingResult>
+                    {
+                        new MbRecordingResult
+                        {
+                            RecordingId = "rec-ladder-fallback",
+                            ArtistMbid = MbidX,
+                            TrackTitle = "Ladder Fallback Case",
+                            ReleaseTitle = "An Unlisted Album",
+                            TrackTitleMatches = true,
+                            ReleaseTitleMatches = false,
+                        },
+                    };
+                }
+                return Array.Empty<MbRecordingResult>();
+            }
+
             if (trackTitle.Equals("Autumn Leaves", StringComparison.OrdinalIgnoreCase))
             {
                 return new List<MbRecordingResult>

@@ -23,6 +23,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
 
         public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, IIdentityCache identityCache)
         {
+            // Shared across every collector that needs to confirm a candidate against a
+            // specific track (§7.2 C3/C4), added 2026-07-12 alongside RecordingLookup.cs.
+            // Constructed once per resolver-plugin instance so its per-(candidate,track)
+            // memoization actually pays off once more than one collector shares it.
+            var recordingLookup = new RecordingLookup(client);
+
             Strategies = new ICandidateGenerationStrategy<EmbyArtist>[]
             {
                 new AnchoredRecordingStrategy(client, identityCache),  // Strategy A, priority 10
@@ -37,10 +43,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
 
             ObservationEvidenceCollectors = new IObservationEvidenceCollector<EmbyArtist>[]
             {
-                new WorkRelationshipEvidenceCollector(client),
+                new WorkRelationshipEvidenceCollector(client, recordingLookup),
                 // AliasEvidenceCollector, RecordingRelationshipEvidenceCollector,
                 // AlbumMatchEvidenceCollector, CorroborationTierEvidenceCollector
-                // arrive alongside BayesianBeliefScorer as a follow-up step, §21.
+                // arrive alongside BayesianBeliefScorer as a follow-up step, §21. None of
+                // these three exist in the repo yet as of this commit (ground-truth
+                // verified 2026-07-12) — an earlier log entry claiming otherwise was wrong.
             };
 
             ObservationUnitProvider = new EmbyArtistObservationUnitProvider();

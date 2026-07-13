@@ -25,9 +25,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
             var seen = new HashSet<string>();
             foreach (var track in source.Tracks)
             {
-                var recordings = _client.SearchRecording(track.TrackName, track.AlbumName);
+                var recordings = _client.SearchRecording(track.TrackName, track.AlbumName, null); // artistName not wired in here yet — follow-up work
                 if (recordings.Count == 0)
-                    recordings = _client.SearchRecording(track.TrackName, null); // fallback: drop release: clause
+                    recordings = _client.SearchRecording(track.TrackName, null, null); // fallback: drop release: clause
 
                 foreach (var rec in recordings)
                 {
