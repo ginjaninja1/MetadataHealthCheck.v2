@@ -55,6 +55,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
 
             ObservationEvidenceCollectors = new IObservationEvidenceCollector<EmbyArtist>[]
             {
+                new ProviderIdEvidenceCollector(), // Tier 0, §6.1 -- built 2026-07-15
                 new WorkRelationshipEvidenceCollector(client, recordingLookup),
                 new RecordingRelationshipEvidenceCollector(client, recordingLookup),
                 new CorroborationTierEvidenceCollector(recordingLookup),

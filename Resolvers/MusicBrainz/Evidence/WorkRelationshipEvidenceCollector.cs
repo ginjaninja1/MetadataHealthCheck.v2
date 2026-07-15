@@ -49,8 +49,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             if (unit is not EmbyTrackObservationUnit trackUnit) return null;
             var track = trackUnit.Track;
 
-            var lookup = _recordingLookup.Lookup(candidate.TargetId, track, artistName: null);
-            var rec = lookup.Recording;
+            // Composer-tier: relationship-scan path (§5.1's Composer-tier variant) --
+            // the name-bearing Lookup() below can never find a composer candidate,
+            // since they're not the recording's artist-credit. See Outstanding item A.
+            MbRecordingResult? rec;
+            if (string.Equals(track.Role, "Composer", StringComparison.OrdinalIgnoreCase))
+            {
+                var coCredits = track.AlbumArtists.Concat(track.Artists).Select(c => c.Name);
+                rec = _recordingLookup.LookupComposerTier(candidate.TargetId, track, coCredits).Recording;
+            }
+            else
+            {
+                rec = _recordingLookup.Lookup(candidate.TargetId, track, artistName: null).Recording;
+            }
             if (rec == null) return null;
 
             var rels = _client.GetRelationships(rec.RecordingId)

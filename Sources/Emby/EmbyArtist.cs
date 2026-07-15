@@ -16,18 +16,29 @@ namespace MetadataHealthCheck.v2.Sources.Emby
 
     /// <summary>
     /// One credited name on a track — an artist, album artist, or composer entry
-    /// from Emby's own per-track credit lists. Carries its own Emby id and
-    /// ProviderIds separately from the track's own ProviderIds (§5.1's Tier 0 fast
-    /// path is about the TRACK's own asserted MusicBrainz id; this is about whether
-    /// a given CREDITED NAME on the track already has a confirmed identity via
-    /// artist_cooccurrence + identity_cache, §9 — the two are unrelated lookups
-    /// that happen to both be called "ProviderIds").
+    /// from Emby's own per-track credit lists.
+    ///
+    /// CHANGED 2026-07-15 (Project Log Directives): EmbyId and per-credited-name
+    /// ProviderIds dropped. Confirmed by checking every evidence collector directly:
+    /// nothing in the resolution pipeline reads a co-credited name's Emby id — the
+    /// only entity id that matters to resolution is the SOURCE artist's own SourceId
+    /// (identity cache key, §5.6) and TrackId/AlbumId (RecordingLookup's memoization
+    /// key). Carrying Emby ids for OTHER people mentioned on a track has exactly one
+    /// theoretical consumer — the parked cross-artist anchoring mechanism (§9
+    /// anchor_dependencies) — which is not implemented and stays out of scope here.
+    ///
+    /// Replaced with an optional Mbid: a real, already-known MusicBrainz artist id
+    /// for this credited name, if one happens to be known. This is NOT the same
+    /// mechanism as anchoring either — it's just an optional fact carried on the
+    /// observation, unused by any collector today, reserved for whenever anchoring
+    /// (or Tier 0-adjacent uses) is un-parked. See EmbyTrackCredit.ProviderIds below
+    /// for the actual, real, currently-consumed Tier 0 mechanism (the TRACK's own
+    /// tagged MusicBrainz id) — the two are deliberately kept distinct.
     /// </summary>
     public class EmbyCreditedName
     {
         public string Name { get; set; } = "";
-        public string EmbyId { get; set; } = "";
-        public Dictionary<string, string> ProviderIds { get; set; } = new();
+        public string? Mbid { get; set; }
     }
 
     /// <summary>
@@ -54,7 +65,7 @@ namespace MetadataHealthCheck.v2.Sources.Emby
         public string AlbumName { get; set; } = "";
         public string AlbumId { get; set; } = "";
         public string Role { get; set; } = "";                 // AlbumArtist | Artist | Composer -- this artist's own tier on this track
-        public Dictionary<string, string> ProviderIds { get; set; } = new();  // this TRACK's own provider ids (Tier 0 fast path, §5.1) -- unrelated to the per-credited-name ids below
+        public Dictionary<string, string> ProviderIds { get; set; } = new();  // this TRACK's own provider ids -- Tier 0 evidence, §6.1. Real, consumed key: "MusicBrainzArtist" -> a confirmed MBID (see ProviderIdEvidenceCollector.cs for the exact interpretation, since §6.1/§8.2 don't literally specify the tag's key shape).
 
         public List<EmbyCreditedName> AlbumArtists { get; set; } = new();
         public List<EmbyCreditedName> Artists { get; set; } = new();

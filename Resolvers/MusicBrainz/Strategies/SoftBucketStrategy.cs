@@ -84,6 +84,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
         {
             foreach (var track in source.Tracks)
             {
+                // Composer-tier: the candidate is never the recording's artist-credit,
+                // so the name-bearing ladder below can never confirm it (Outstanding
+                // item A / §5.1's Composer-tier variant). Route through the
+                // relationship-scan path instead.
+                if (string.Equals(track.Role, "Composer", StringComparison.OrdinalIgnoreCase))
+                {
+                    var coCredits = track.AlbumArtists.Concat(track.Artists).Select(c => c.Name);
+                    var composerLookup = _recordingLookup.LookupComposerTier(candidateMbid, track, coCredits);
+                    if (composerLookup.Recording != null)
+                        return true;
+                    continue;
+                }
+
                 var lookup = _recordingLookup.Lookup(candidateMbid, track, source.DisplayName);
                 if (lookup.Recording != null)
                     return true;

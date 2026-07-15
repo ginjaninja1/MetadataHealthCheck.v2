@@ -8,8 +8,11 @@ namespace MetadataHealthCheck.v2.Sources.Emby
     /// (not on any allowed package registry — nuget.org is blocked here, and the
     /// SDK is normally supplied by an Emby server install, not a package feed).
     /// This is tracked as an open item in the Project Log rather than silently
-    /// assumed away. FixtureEmbyLibraryReader below is the Phase-1 stand-in,
-    /// consistent with §17.1's fixture-based testing philosophy.
+    /// assumed away. TextFileEmbyLibraryReader.cs (Fixtures/) is the current
+    /// stand-in, reading real-shaped observation data from a plain-text file
+    /// (SmokeTest/observations.txt) rather than hardcoding it in a C# class --
+    /// replaced FixtureEmbyLibraryReader.cs 2026-07-15, which hardcoded sample
+    /// data as object literals in code (Project Log Directives).
     /// </summary>
     public interface IEmbyLibraryReader
     {

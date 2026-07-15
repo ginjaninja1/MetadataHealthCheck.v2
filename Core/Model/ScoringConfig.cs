@@ -107,6 +107,10 @@ namespace MetadataHealthCheck.v2.Core.Model
         // explicit decision on retiring that collector's scored-evidence role.
         public Dictionary<string, double> EvidenceWeights { get; set; } = new()
         {
+            // Tier 0 (§6.1) -- the track's own asserted MusicBrainz id, via
+            // ProviderIdEvidenceCollector.cs. Added 2026-07-15; previously spec'd,
+            // never built (no collector existed to produce this evidence type at all).
+            ["ProviderIds.Confirmed"] = 5.0,
             ["NameSimilarity.NearExact"] = 1.5,
             ["NameSimilarity.Close"] = 0.5,
             ["NameSimilarity.Poor"] = -2.0,

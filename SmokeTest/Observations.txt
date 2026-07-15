@@ -1,0 +1,161 @@
+﻿# observations.txt -- track observation data for MetadataHealthCheck.v2's SmokeTest.
+#
+# Format: see Fixtures/TextFileEmbyLibraryReader.cs's header comment for the full
+# grammar. Short version: each ARTIST block is one Emby artist under review; each
+# TRACK block inside it declares ALL real credits on that physical track (not just
+# this artist's own credit) -- this artist's own Role is derived automatically from
+# whichever role-list contains their DisplayName.
+#
+# Every artist/track/album/relationship fact below must stay consistent with
+# Fixtures/FixtureMusicBrainzApiClient.cs, since that's what actually answers the
+# engine's MusicBrainz calls in this sandbox -- inventing a track here that the MB
+# fixture doesn't know about will just produce "no recording found", not a new
+# test case. Extend both files together when adding genuinely new material.
+#
+# Exported 2026-07-15 from the previously hardcoded FixtureEmbyLibraryReader.cs and
+# SmokeTest/Program.cs object literals (Project Log Directives: sample data must
+# not live in code). Nick: this is a starting point, not a complete set --
+# deliberately real but not yet exhaustive; add/curate weakness-probing cases
+# directly in this file.
+
+# ---------------------------------------------------------------------------
+# Sarah Vaughan -- AlbumArtist tier. §18's worked example (rung 1, full-triple
+# corroboration) plus a second real track so multi-observation sampling has
+# something genuine to walk through. PROVIDERIDS on the first track demonstrates
+# the new Tier 0 collector (ProviderIdEvidenceCollector.cs) -- since it's worth
+# +5.0 on its own, this artist should now resolve after a single observation.
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-sarah-vaughan "Sarah Vaughan"
+
+TRACK track-autumn-leaves "Autumn Leaves"
+ALBUM album-crazy-and-mixed-up "Crazy and Mixed Up"
+DURATION_MS 335240
+PROVIDERIDS MusicBrainzArtist=mbid-sarah-vaughan-correct
+ALBUMARTIST "Sarah Vaughan"
+ARTIST "Sarah Vaughan"
+
+TRACK track-a-different-song-entirely "A Different Song Entirely"
+ALBUM album-some-earlier-album "Some Earlier Album"
+ALBUMARTIST "Sarah Vaughan"
+ARTIST "Sarah Vaughan"
+
+# ---------------------------------------------------------------------------
+# Gus Black -- Composer tier. Real, externally-corroborated composer credit on
+# "Borrowed Time" (A Fine Frenzy's "One Cell in the Sea"). The real recording-
+# artist-credit is A Fine Frenzy, not Gus Black -- included here as a real
+# ARTIST credit on the same track (co-credit context, not a separate
+# observation for a separate artist), and also used by the new composer-tier
+# "borrowed name" search rung (RecordingLookup.LookupComposerTier).
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-gus-black "Gus Black"
+
+TRACK track-borrowed-time "Borrowed Time"
+ALBUM album-one-cell-in-the-sea "One Cell in the Sea"
+ARTIST "A Fine Frenzy"
+COMPOSER "Gus Black"
+
+# ---------------------------------------------------------------------------
+# Del Serino -- Composer tier. Same real-world shape as Gus Black: composer
+# credit (with Roy Alfred, not modeled here -- add if you want to exercise
+# multi-composer tracks) on Adele's "19" cover of "That's It, I Quit, I'm
+# Moving On".
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-del-serino "Del Serino"
+
+TRACK track-thats-it-i-quit "That's It, I Quit, I'm Moving On"
+ALBUM album-19 "19"
+ARTIST "Adele"
+COMPOSER "Del Serino"
+
+# ---------------------------------------------------------------------------
+# Queen -- Artist tier (performer credit; "Various Artists" would hold
+# AlbumArtist on this radio compilation in real Emby data, not modeled here).
+# Real recording-level producer credit (Queen co-produced with Roy Thomas
+# Baker) is what RecordingRelationshipEvidenceCollector was built for.
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-queen "Queen"
+
+TRACK track-bohemian-rhapsody "Bohemian Rhapsody"
+ALBUM album-top-2000-radio-2 "Top 2000 (Radio 2)"
+ARTIST "Queen"
+
+# ---------------------------------------------------------------------------
+# Florence + the Machine -- AlbumArtist tier, real Tier 1 full-triple match.
+# Emby's own tagged DisplayName determines the credited-name text this artist
+# is matched against (real per-install tagging variance -- ampersand/plus/
+# "and" are all genuine MusicBrainz-side variants, not tagging errors, per
+# MB's own "Florence and the Machine" sort-name). Duplicate this block with a
+# different DisplayName/ARTIST pair to re-exercise the naming-variant cases
+# the old SmokeTest covered inline (NameSimilarity.Close/NearExact).
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-florence "Florence + the Machine"
+
+TRACK track-dog-days-are-over "Dog Days Are Over"
+ALBUM album-lungs "Lungs"
+ALBUMARTIST "Florence + the Machine"
+ARTIST "Florence + the Machine"
+
+# ---------------------------------------------------------------------------
+# Sarah Vaughan (ceiling) -- pure sampler-mechanics probe, not a real-world
+# case: BucketCeiling["AlbumArtist"]=3 (ScoringConfig.cs) means only the first
+# 3 AlbumArtist-tier observations drawn are ever evaluated. Three dead tracks
+# (unknown to the MB fixture -> no recording found) fill the ceiling; a 4th,
+# real, fully-corroborating "Autumn Leaves" track sits past it and must never
+# get drawn -- if the ceiling isn't enforced, this artist would wrongly
+# auto_accept instead of landing on needs_review.
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-sarah-vaughan-ceiling "Sarah Vaughan"
+
+TRACK c-dead-1 "Ceiling Filler One"
+ALBUM album-filler-1 "Filler Album 1"
+ALBUMARTIST "Sarah Vaughan"
+
+TRACK c-dead-2 "Ceiling Filler Two"
+ALBUM album-filler-2 "Filler Album 2"
+ALBUMARTIST "Sarah Vaughan"
+
+TRACK c-dead-3 "Ceiling Filler Three"
+ALBUM album-filler-3 "Filler Album 3"
+ALBUMARTIST "Sarah Vaughan"
+
+TRACK c-autumn-leaves-blocked "Autumn Leaves"
+ALBUM album-crazy-and-mixed-up "Crazy and Mixed Up"
+ALBUMARTIST "Sarah Vaughan"
+
+# ---------------------------------------------------------------------------
+# Sarah Vaughan (exhaustion) -- pure sampler-mechanics probe: dead tracks
+# across all three buckets, nothing resolves anywhere. Must terminate cleanly
+# on needs_review after exhausting every bucket's ceiling, not hang or throw.
+# ---------------------------------------------------------------------------
+
+ARTIST emby-artist-sarah-vaughan-exhaustion "Sarah Vaughan"
+
+TRACK x-albumartist-1 "Nothing Here AA1"
+ALBUM album-empty-aa1 "Empty Album AA1"
+ALBUMARTIST "Sarah Vaughan"
+
+TRACK x-albumartist-2 "Nothing Here AA2"
+ALBUM album-empty-aa2 "Empty Album AA2"
+ALBUMARTIST "Sarah Vaughan"
+
+TRACK x-artist-1 "Nothing Here A1"
+ALBUM album-empty-a1 "Empty Album A1"
+ARTIST "Sarah Vaughan"
+
+TRACK x-artist-2 "Nothing Here A2"
+ALBUM album-empty-a2 "Empty Album A2"
+ARTIST "Sarah Vaughan"
+
+TRACK x-composer-1 "Nothing Here C1"
+ALBUM album-empty-c1 "Empty Album C1"
+COMPOSER "Sarah Vaughan"
+
+TRACK x-composer-2 "Nothing Here C2"
+ALBUM album-empty-c2 "Empty Album C2"
+COMPOSER "Sarah Vaughan"

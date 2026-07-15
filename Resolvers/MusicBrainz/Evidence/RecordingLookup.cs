@@ -13,6 +13,25 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         TrackArtistAlbum = 1,
         TrackAlbum = 2,
         TrackOnly = 3,
+
+        // Composer-tier relationship-scan ladder (§5.1's Composer-tier variant, built
+        // 2026-07-15 to close Project Log Outstanding item A). Distinct rung values
+        // from the name-bearing ladder above, purely so diagnostic output honestly
+        // shows which mechanism actually produced a hit -- these never filter by
+        // ArtistMbid==candidate (the candidate isn't the recording's artist-credit by
+        // definition); confirmation instead comes from scanning GetRelationships.
+        //
+        // ComposerBorrowedName is a real addition beyond §5.1's own text (which only
+        // specifies track+album -> track-alone for Composer-tier): search using a
+        // co-credited name already observed on the same track (e.g. the real
+        // performing artist) as the search-text artist field, purely to narrow
+        // MusicBrainz's own search -- NOT anchoring (that would mean trusting an
+        // ALREADY-CONFIRMED identity; this is just an unconfirmed name used as query
+        // text, same as the ordinary ladder already does with the source artist's own
+        // name). Confirmed as in-scope, not parked, per direct instruction.
+        ComposerBorrowedNameTrackAlbum = 4,
+        ComposerTrackAlbum = 5,
+        ComposerTrackOnly = 6,
     }
 
     public class RecordingLookupResult
@@ -121,5 +140,82 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         private static MbRecordingResult? FindForCandidate(string candidateMbid, IReadOnlyList<MbRecordingResult> recordings)
             => recordings.FirstOrDefault(r => r.ArtistMbid == candidateMbid);
+
+        /// <summary>
+        /// Composer-tier confirmation (§5.1's Composer-tier variant; built 2026-07-15
+        /// to close Project Log Outstanding item A). The candidate is not the
+        /// recording's performing artist, so it cannot be found by filtering
+        /// candidate recordings on ArtistMbid==candidate the way the name-bearing
+        /// Lookup() above does. Instead: find the recording by other means, then scan
+        /// ITS relationship data (GetRelationships) for the candidate's MBID anywhere
+        /// in it (work-level for composer/writer, recording-level for
+        /// producer/arranger -- this method doesn't discriminate by level itself,
+        /// since a track's participants can genuinely appear at either level; the
+        /// evidence collectors that call this are what care which level a given hit
+        /// came from).
+        ///
+        /// Ladder: borrowed-name (track+album+each known co-credited name, most
+        /// specific first) -> track+album -> track alone. Per-recording relationship
+        /// calls are themselves memoized by the underlying IMusicBrainzApiClient
+        /// implementation's own concerns, not here -- this method's cache is still the
+        /// shared per-(candidate,track) one used by the name-bearing path.
+        ///
+        /// Unlike the name-bearing ladder, no NameDistanceEvidenceCollector
+        /// trustworthiness check runs here -- the recording's ArtistCreditText is the
+        /// PERFORMER's name, not the composer-candidate's, so that check isn't
+        /// meaningful for this path. A confirmed relationship type IS the safety net.
+        /// </summary>
+        /// <param name="coCreditNames">
+        /// Other names already observed on this same track (e.g. AlbumArtist/Artist
+        /// credits) to try as search-text before falling back to track+album/track-
+        /// alone. Plain, unconfirmed search text -- not anchoring (§5.1 remains
+        /// parked); see the enum comment above.
+        /// </param>
+        public RecordingLookupResult LookupComposerTier(string candidateMbid, EmbyTrackCredit track, IEnumerable<string> coCreditNames)
+        {
+            var key = (candidateMbid, track.TrackId);
+            if (_cache.TryGetValue(key, out var cached))
+                return cached;
+
+            var result = ResolveComposerTier(candidateMbid, track, coCreditNames);
+            _cache[key] = result;
+            return result;
+        }
+
+        private RecordingLookupResult ResolveComposerTier(string candidateMbid, EmbyTrackCredit track, IEnumerable<string> coCreditNames)
+        {
+            foreach (var name in coCreditNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase))
+            {
+                var rec = FindConfirmedByRelationship(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, name));
+                if (rec != null) return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerBorrowedNameTrackAlbum };
+            }
+
+            {
+                var rec = FindConfirmedByRelationship(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, null));
+                if (rec != null) return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerTrackAlbum };
+            }
+
+            {
+                var rec = FindConfirmedByRelationship(candidateMbid, _client.SearchRecording(track.TrackName, null, null));
+                if (rec != null) return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerTrackOnly };
+            }
+
+            return new RecordingLookupResult { Recording = null, RungReached = RecordingLookupRung.NotFound };
+        }
+
+        // Unlike FindForCandidate (name-bearing ladder), does NOT filter by
+        // ArtistMbid==candidate -- checks every returned recording's relationship
+        // data for the candidate's MBID appearing anywhere, since a composer
+        // candidate is never the artist-credit itself.
+        private MbRecordingResult? FindConfirmedByRelationship(string candidateMbid, IReadOnlyList<MbRecordingResult> recordings)
+        {
+            foreach (var rec in recordings)
+            {
+                var rels = _client.GetRelationships(rec.RecordingId);
+                if (rels.Any(r => r.ArtistMbid == candidateMbid))
+                    return rec;
+            }
+            return null;
+        }
     }
 }

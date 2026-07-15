@@ -4,6 +4,12 @@
 		<ProjectReference Include="..\MetadataHealthCheck.v2.csproj" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<None Include="observations.txt">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</None>
+	</ItemGroup>
+
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net8.0</TargetFramework>
