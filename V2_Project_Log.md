@@ -47,20 +47,15 @@ trusting either version.
   (§19) allows.
 
 ### Candidate generation & confirmation (§5.1)
-- **Complete, and current** — `Resolvers/MusicBrainz/Strategies/SoftBucketStrategy.cs`
+- **Complete** — `Resolvers/MusicBrainz/Strategies/SoftBucketStrategy.cs`
   implements the artist-search-first Stage 1 (admission gate, edit-distance,
   zero LLR) → Stage 2 (recording-level confirmation via the shared
-  `RecordingLookup`) mechanism as specified. **This closes out what was
-  previously the single largest open item in this project** — prior
-  versions of this log described this file as pending rework; it is not.
-  Confirmed by direct read of the current file, not carried forward from
-  any prior log entry.
+  `RecordingLookup`) mechanism as specified.
 - See Outstanding, below, for the real gap that remains adjacent to this:
   confirmation for composer-tier candidates.
 
 ### Evidence collectors (§6.1)
-All four collectors flagged as unbuilt in earlier sessions now exist and
-are wired into `MusicBrainzArtistResolverPlugin.cs`:
+All four collectors now exist and are wired into `MusicBrainzArtistResolverPlugin.cs`:
 - `AlbumMatchEvidenceCollector.cs` — **Complete**, with one documented
   limitation: only the first matching album per candidate is found, not
   all matching albums. Low-impact per its own in-file note.
@@ -88,7 +83,7 @@ are wired into `MusicBrainzArtistResolverPlugin.cs`:
 
 ### Emby source (§8)
 - `EmbyArtist.cs` — **Complete.** Widened `EmbyTrackCredit` carrying
-  AlbumArtists/Artists/Composers/Duration, per prior session's directive.
+  AlbumArtists/Artists/Composers/Duration.
 - `EmbyArtistProvider.cs` — **Complete**, including `ArtistFilter` support
   (§11.3).
 - `EmbyArtistObservationUnitProvider.cs` — **Partial.** Implements 2 of the
@@ -129,7 +124,7 @@ are wired into `MusicBrainzArtistResolverPlugin.cs`:
 ### Fixtures
 - `FixtureEmbyLibraryReader.cs`, `FixtureMusicBrainzApiClient.cs` —
   **Complete** for their purpose. Cover real-world cases used to validate
-  design decisions this session and prior sessions: Sarah Vaughan/"Autumn
+  design decisions: Sarah Vaughan/"Autumn
   Leaves", Gus Black, Del Serino, plus general naming-variant cases (Queen,
   Florence + the Machine).
 
@@ -156,14 +151,14 @@ work — not a rename or a config flag.
 **Status: this is the confirmed next priority — see §3 below.**
 
 ### B. Data model / storage field rename: `GenerationStrategy` → `ConfirmationQueryShape`
-The current spec (§4, §9) renamed this field now that there's no longer a
-labeled "strategy" concept — it should describe which Stage 2 confirmation
-variant (name-bearing vs. relationship-scan) produced a candidate. Code has
-not caught up: `Candidate.GenerationStrategy` (Core/Model) and the SQLite
-column `resolution_candidates.generation_strategy` (`MatchRepository.cs`)
-both still use the old name and the old "A"/"B"/"C" value scheme. This is
-expected — the spec was only just updated — not a contradiction to
-resolve, just a rename to carry through.
+The spec (§4, §9) names this field `ConfirmationQueryShape` now that there's
+no labeled "strategy" concept — it should describe which Stage 2
+confirmation variant (name-bearing vs. relationship-scan) produced a
+candidate. The code has not caught up: `Candidate.GenerationStrategy`
+(Core/Model) and the SQLite column
+`resolution_candidates.generation_strategy` (`MatchRepository.cs`) both
+still use the old name and the old "A"/"B"/"C" value scheme. Not a
+contradiction requiring a decision — just a rename to carry through.
 
 ### C. `NameDistanceEvidenceCollector` is still registered as a scored evidence collector
 Confirmed still wired in `MusicBrainzArtistResolverPlugin.cs`'s
@@ -182,20 +177,20 @@ reachable by Stage 1/Stage 2. The matching `NameSimilarity.*` entries in
 sides of the same open item, not two separate tasks.
 
 ### D. `MusicBrainzArtistResolverPlugin` constructor has an unused parameter
-As of this session's fix (removing `AnchoredRecordingStrategy` from the
-active `Strategies` array — see item E below), the `identityCache`
-constructor parameter is no longer used anywhere in the constructor body.
+With `AnchoredRecordingStrategy` no longer in the active `Strategies` array
+(see item E below), the `identityCache` constructor parameter is no longer
+used anywhere in the constructor body.
 Left in place deliberately rather than changed blind, since this repo
 cannot be built/verified in the sandbox and a signature change risks
 silently breaking composition-root wiring (§12.3) with no way to catch it
 here. Small cleanup, not urgent.
 
 ### E. `AnchoredRecordingStrategy.cs` — now correctly parked, not wired
-**Fixed this session.** It was found live-wired in the active `Strategies`
-array despite anchoring being a parked concept in the spec (§5.1/§10.1).
-Removed from the active array in `MusicBrainzArtistResolverPlugin.cs`. The
-file itself is retained, not deleted — anchoring may be un-parked later.
-No further action needed unless/until that decision is made.
+Not wired into the active `Strategies` array in
+`MusicBrainzArtistResolverPlugin.cs` — anchoring is a parked concept in the
+spec (§5.1/§10.1). The file itself is retained, not deleted, in case
+anchoring is un-parked later. No further action needed unless/until that
+decision is made.
 
 ### F. Storage: 11 of ~14 §9.1 tables not built
 Listed under Delivered → Storage above. Not urgent — `resolution_candidates`,
@@ -204,29 +199,24 @@ Listed under Delivered → Storage above. Not urgent — `resolution_candidates`
 etc.) come with the phases that need them (§19 phases 3–4).
 
 ### G. Stale section-number references inside code comments
-Several in-file comments cite section numbers from before this session's
-spec renumbering (e.g. a comment in `MusicBrainzArtistResolverPlugin.cs`
-citing "§5.2 precursor" for `AlbumMatchEvidenceCollector`, which is still
-correct in meaning but references old numbering). Low-priority hygiene
-pass, not urgent — flagged so it doesn't get mistaken for a real
-spec-vs-code divergence later.
+A comment in `MusicBrainzArtistResolverPlugin.cs` citing "§5.2 precursor"
+for `AlbumMatchEvidenceCollector` references an old spec section number —
+still correct in meaning, wrong number. Low-priority hygiene pass, not
+urgent — flagged so it doesn't get mistaken for a real spec-vs-code
+divergence later.
 
 ### H. `EmbyArtistObservationUnitProvider` — 3 of 5 feed-order rules missing
-**Comment corrected this session** — the file's own doc comment previously
-undercounted the spec (referenced only 4 of §5.3.1's 5 distance-seeking
-rules, missing "longer track titles first" entirely; also cited the old
-§5.5.1 section number). Now accurately describes the real gap:
+Against §5.3.1's 5 distance-seeking rules:
 
 - Rule 1 (different-album-first) — **implemented**.
 - Rule 3 (different-title-first) — **implemented**.
 - Rule 2 (single-credit-tracks-first) — **not implemented**, blocked on a
   real data gap: needs the full credit list for a track, not just this
   artist's own credit. `EmbyTrackCredit` doesn't carry that yet.
-- Rule 4 (longer-track-titles-first) — **not implemented**, and wasn't
-  previously even acknowledged as missing in the file's own comments. No
-  known data gap — `TrackName` is already on `EmbyTrackCredit` — so this is
-  likely just unpicked-up work, not a model change. Worth confirming with a
-  quick look before assuming it's free, per the open question below.
+- Rule 4 (longer-track-titles-first) — **not implemented**. No known data
+  gap — `TrackName` is already on `EmbyTrackCredit` — so this is likely
+  just unwritten, not a model change. Worth confirming with a quick look
+  before assuming it's free, per the open question below.
 - Rule 5 (shorter-albums-first, <20 tracks) — **not implemented**, blocked
   on a real data gap: needs a true per-album track count, not just how many
   of an album's tracks this artist happens to be credited on.
