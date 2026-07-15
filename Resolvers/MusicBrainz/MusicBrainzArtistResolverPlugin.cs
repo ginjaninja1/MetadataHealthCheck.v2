@@ -22,6 +22,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         public IBeliefScorer Scorer { get; }
         public IDecisionGate DecisionGate { get; }
 
+        // identityCache is currently unused in this constructor body: its only consumer,
+        // AnchoredRecordingStrategy, was unwired below (anchoring parked, spec §5.1/§10.1).
+        // Left in the signature deliberately rather than changed blind — this repo can't be
+        // built/verified in the sandbox, so a signature change risks silently breaking the
+        // composition root (§12.3) wiring without any way to catch it here. Flagged as a
+        // small next-session cleanup, not fixed in this pass.
         public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, IIdentityCache identityCache, ScoringConfig scoringConfig)
         {
             // Shared across every collector that needs to confirm a candidate against a
@@ -33,9 +39,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
 
             Strategies = new ICandidateGenerationStrategy<EmbyArtist>[]
             {
-                new AnchoredRecordingStrategy(client, identityCache),          // Strategy A, priority 10
-                new SoftBucketStrategy(client, recordingLookup, scoringConfig), // Strategy B, priority 30 — artist-search-first
-                // Strategy C (borrowed anchor) arrives in Phase 3 alongside co-occurrence graph, §21
+                new SoftBucketStrategy(client, recordingLookup, scoringConfig), // artist-search-first generation + confirmation, spec §5.1
+                // AnchoredRecordingStrategy.cs is retained in the repo but deliberately not
+                // registered here. Anchoring is a parked concept (spec §5.1/§10.1) — wiring
+                // it in alongside SoftBucketStrategy risked duplicate candidates with split
+                // evidence pools across two generation paths. Do not re-add without an
+                // explicit decision to un-park anchoring.
             };
 
             EvidenceCollectors = new IEvidenceCollector<EmbyArtist>[]

@@ -5,25 +5,29 @@ namespace MetadataHealthCheck.v2.Sources.Emby
 {
     /// <summary>
     /// Buckets an artist's tracks by role, AlbumArtist -> Artist -> Composer
-    /// (§5's priority order, highest signal first), and orders each bucket per
-    /// §5.5.1's distance-seeking rules.
+    /// (§5.3's priority order, highest signal first), and orders each bucket per
+    /// §5.3.1's five distance-seeking rules.
     ///
-    /// Two of the four §5.5.1 rules are implemented faithfully with data already
-    /// on EmbyTrackCredit: different-album-first (rule 1) and different-track-title-
-    /// first (rule 3). The other two -- single-credit-tracks-first (rule 2) and
-    /// shorter-albums-first (rule 4) -- need data this model doesn't carry yet:
-    /// rule 2 needs the *full* credit list for a track (how many other Artists/
-    /// AlbumArtists share it), not just this artist's own credit; rule 4 needs a
-    /// true per-album track count, not just how many of an album's tracks this
-    /// artist happens to be credited on. Left as a documented gap rather than
-    /// faked with a misleading proxy -- revisit once EmbyLibraryReader's E2 read
-    /// is widened to carry that data (§21 phase 2/3).
+    /// 2 of the 5 §5.3.1 rules are implemented faithfully with data already on
+    /// EmbyTrackCredit: different-album-first (rule 1) and different-track-title-
+    /// first (rule 3).
     ///
-    /// CONFIRMED 2026-07-12 (not yet implemented): this is exactly the gap the
-    /// "widen EmbyTrackCredit" coding checklist in the Project Log addresses --
-    /// rule 2 becomes straightforwardly implementable once done; rule 4 only
-    /// partially (still needs a true per-album track count beyond what that
-    /// checklist supplies alone).
+    /// The other 3 are NOT implemented -- do not assume otherwise from earlier
+    /// comments in this file's history, which only accounted for 4 rules total
+    /// and were themselves incomplete against the spec:
+    ///   - Rule 2, single-credit-tracks-first: needs the *full* credit list for a
+    ///     track (how many other Artists/AlbumArtists share it), not just this
+    ///     artist's own credit -- EmbyTrackCredit doesn't carry that yet.
+    ///   - Rule 4, longer-track-titles-first: not implemented and not previously
+    ///     even accounted for in this file's comments. No known data gap --
+    ///     TrackName is already on EmbyTrackCredit, so this one is likely a small
+    ///     addition once picked up, not a model change.
+    ///   - Rule 5, shorter-albums-first (&lt;20 tracks): needs a true per-album
+    ///     track count, not just how many of an album's tracks this artist
+    ///     happens to be credited on -- EmbyTrackCredit doesn't carry that yet.
+    ///
+    /// Left as a documented gap rather than faked with a misleading proxy.
+    /// Tracked as outstanding in the Project Log, §2 item H.
     /// </summary>
     public class EmbyArtistObservationUnitProvider : IObservationUnitProvider<EmbyArtist>
     {
