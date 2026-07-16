@@ -3,54 +3,48 @@ using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Diagnostics;
 using MetadataHealthCheck.v2.Fixtures;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz;
-using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence;
+using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
+using MetadataHealthCheck.v2.Scoring;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
 
-// REWRITTEN 2026-07-15 (Project Log Directives): this file used to hardcode
-// every test artist's track data as inline C# object literals (a Credit(...)
-// builder function plus per-case object initializers), interleaved with
-// Assert(...) calls checking the exact expected outcome for each one. That's
-// exactly the "sample data welded into code" problem flagged this session --
-// worse here than FixtureEmbyLibraryReader.cs, since test data and test logic
-// were the same code.
+// LIVE MusicBrainz run against real observation data (SmokeTest/Observations.txt).
+// HttpMusicBrainzApiClient (Resolvers/MusicBrainz/Client/) hits
+// https://musicbrainz.emby.tv/ws/2/ -- no throttling, no User-Agent, no API key.
+// This file's only job is composing plugin + engine, feeding it real observations,
+// and reporting -- it has no opinion on how the client works internally.
 //
-// Now: real observation data lives in observations.txt (Fixtures/
-// TextFileEmbyLibraryReader.cs parses it), and this file just runs every
-// artist in it through the real engine and lets the console show what
-// happens -- StructuredLogger already prints every Debug/Info line live
-// (Log() calls Console.WriteLine directly), so SequentialSampler's own
-// per-evidence-record logging is what actually produces the "watch the
-// engine mine evidence" trail; nothing extra needed here for that part.
-//
-// This is now an OBSERVATIONAL smoke test, not an assertion-per-artist one --
-// per-artist expected outcomes aren't hardcoded here anymore (that was the
-// exact pattern being removed). What DOES still get asserted below is pure
-// engine MECHANICS -- the RecordingLookup ladder(s) and MbArtistResult.Aliases
-// checks -- since those test a specific class's behavior directly, not
-// "what should this real-world artist resolve to", and don't depend on
-// observations.txt at all.
-int failures = 0;
-void Assert(bool cond, string message)
-{
-    if (cond) { Console.WriteLine($"  PASS: {message}"); }
-    else { Console.WriteLine($"  FAIL: {message}"); failures++; }
-}
+// REWRITTEN 2026-07-16 (readability pass): previously this printed only a single
+// "==> status=... target=... confidence=... margin=..." line per artist, with the
+// engine's internal Debug/Info log lines scrolling past ungrouped. That told you
+// the answer but not how the engine got there. Now each artist gets:
+//   1. An OBSERVATIONS block -- what was actually loaded (tracks/roles/albums)
+//      before any resolution happens, so you can eyeball "does this look right"
+//      before watching the engine work on it.
+//   2. Stage banners around the engine's own live trace (MbApi lookups, candidate
+//      generation, sampler evidence draws) -- same log lines as before, just
+//      visually grouped instead of an undifferentiated scroll.
+//   3. A SCOREBOARD -- every candidate the engine generated, each one's final
+//      evidence tally and LLR/confidence, ranked. This is reconstructed AFTER
+//      ResolveOne returns, from InMemoryMatchRepository's own saved candidates/
+//      evidence (exposed for exactly this) run back through SimpleWeightedSumScorer
+//      (a plain, side-effect-free class) -- no engine or sampler code changed to
+//      get this; it's a read of what the engine already recorded.
+//   4. A DECISION block that states the outcome against the actual configured
+//      thresholds, not just the bare status string.
+Console.WriteLine("=== MetadataHealthCheck.v2 SmokeTest: LIVE MusicBrainz run ===");
+Console.WriteLine("Real observation data (SmokeTest/Observations.txt), real engine, and REAL");
+Console.WriteLine("MusicBrainz data via https://musicbrainz.emby.tv/ws/2/ (HttpMusicBrainzApiClient).");
+Console.WriteLine("Uses an in-memory IMatchRepository, not real SQLite -- see InMemoryMatchRepository.cs.\n");
 
-Console.WriteLine("=== MetadataHealthCheck.v2 SmokeTest: observation-driven run ===");
-Console.WriteLine("Real MusicBrainz fixture data (Fixtures/FixtureMusicBrainzApiClient.cs),");
-Console.WriteLine("real observation data (SmokeTest/observations.txt), real engine. Uses an");
-Console.WriteLine("in-memory IMatchRepository, not real SQLite -- see InMemoryMatchRepository.cs");
-Console.WriteLine("for why. Every Debug/Info line below is the sampler's own live evidence log,");
-Console.WriteLine("not summarized after the fact.\n");
-
-var mbClient = new FixtureMusicBrainzApiClient();
-var identityCache = new InMemoryIdentityCache();
 var logger = new StructuredLogger();
+var mbClient = new HttpMusicBrainzApiClient(logger);
+var identityCache = new InMemoryIdentityCache();
 var scoringConfig = new ScoringConfig();
+var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboard, not part of resolution itself
 
-var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfig);
+var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfig, logger);
 
 var observationsPath = Path.Combine(AppContext.BaseDirectory, "observations.txt");
 if (!File.Exists(observationsPath))
@@ -67,83 +61,129 @@ var context = new ResolutionContext();
 
 var artists = provider.GetAll(context).ToList();
 Console.WriteLine($"Loaded {artists.Count} artist(s) from {observationsPath}.\n");
+Console.WriteLine("(Press any key to advance through each stage/artist; Ctrl+C to quit early.)\n");
 
 var summary = new List<(string DisplayName, string SourceId, MatchResult Result)>();
 
 foreach (var artist in artists)
 {
+    Banner($"ARTIST: {artist.DisplayName}  ({artist.SourceId})");
+
+    PrintObservationAvailability(artist);
+    Pause();
+
+    Banner("STAGE: candidate generation, then observations fed ONE AT A TIME (AlbumArtist -> Artist -> Composer)");
+    Console.WriteLine("    (each \"-- Observation #N\" line is a single observation entering the sampler; the");
+    Console.WriteLine("     evidence lines right after it are what THAT observation produced. NOTE: this whole");
+    Console.WriteLine("     stage runs as one uninterrupted live trace below -- pausing INSIDE it, between");
+    Console.WriteLine("     candidate generation and each individual observation, would need a pause hook");
+    Console.WriteLine("     threaded into SequentialSampler itself; not done here, flagging rather than faking it.\n");
+
     // Fresh repository per artist -- InMemoryMatchRepository has no per-artist
     // scoping of its own, and reusing one across artists isn't needed for what
     // this smoke test measures.
     var repo = new InMemoryMatchRepository();
     var engine = new ResolutionEngine(plugin, repo, identityCache, scoringConfig, logger);
-
-    Console.WriteLine($"----- {artist.DisplayName} ({artist.SourceId}) -- {artist.Tracks.Count} track-credit(s) -----");
+    var callsBefore = mbClient.TotalApiCalls;
     var result = engine.ResolveOne(artist, context);
-    Console.WriteLine($"==> status={result.Status} target={result.TargetId} confidence={result.Confidence:F3} margin={result.Margin:F2}\n");
+    var callsForThisArtist = mbClient.TotalApiCalls - callsBefore;
+    Pause();
+
+    Banner("STAGE: artist evidence summary");
+    PrintScoreboard(repo, scoringConfig, scorer, mbClient);
+    Pause();
+
+    Banner("STAGE: decision");
+    PrintDecision(result, scoringConfig);
+    Console.WriteLine($"  API load for this artist: {callsForThisArtist} live MBZ call(s) (running total: {mbClient.TotalApiCalls})");
+    Pause();
 
     summary.Add((artist.DisplayName, artist.SourceId, result));
+    Console.WriteLine();
 }
 
-Console.WriteLine("=== Summary ===");
+Banner("SUMMARY -- all artists");
 foreach (var (displayName, sourceId, result) in summary)
     Console.WriteLine($"  {displayName,-24} {sourceId,-42} {result.Status,-14} target={result.TargetId} confidence={result.Confidence:F3}");
 
-Console.WriteLine("\n=== Engine mechanics checks (independent of observations.txt) ===\n");
+Console.WriteLine($"\nTotal live MBZ API calls this run: {mbClient.TotalApiCalls}");
+foreach (var (callType, count) in mbClient.ApiCallsByType.OrderByDescending(kv => kv.Value))
+    Console.WriteLine($"  {callType,-24} {count}");
 
-Console.WriteLine("--- MbArtistResult.Aliases ---");
-var sarahVaughanArtistResults = mbClient.SearchArtist("Sarah Vaughan");
-var xResult = sarahVaughanArtistResults.First(a => a.Mbid == FixtureMusicBrainzApiClient.MbidX);
-Assert(xResult.Aliases.Count == 5, $"Sarah Vaughan (X) carries 5 registered aliases (got {xResult.Aliases.Count})");
-Assert(xResult.Aliases.Contains("Sarah Vaughn"), "alias list includes the common single-h misspelling \"Sarah Vaughn\"");
-var yResult = sarahVaughanArtistResults.First(a => a.Mbid == FixtureMusicBrainzApiClient.MbidY);
-Assert(yResult.Aliases.Count == 0, "the rival same-named artist (Y) carries no aliases of its own");
+mbClient.Dispose();
+return 0;
 
-Console.WriteLine("\n--- RecordingLookup three-rung fallback ladder ---");
-var recordingLookup = new RecordingLookup(mbClient);
+// ---------------------------------------------------------------------------
 
-var autumnLeavesTrack = new EmbyTrackCredit
+static void Banner(string text)
 {
-    TrackId = "track-autumn-leaves-ladder-check",
-    TrackName = "Autumn Leaves",
-    AlbumName = "Crazy and Mixed Up",
-    AlbumId = "album-crazy-and-mixed-up",
-    Role = "AlbumArtist",
-};
-var rung1Lookup = recordingLookup.Lookup(FixtureMusicBrainzApiClient.MbidX, autumnLeavesTrack, artistName: "Sarah Vaughan");
-Assert(rung1Lookup.RungReached == RecordingLookupRung.TrackArtistAlbum, $"Autumn Leaves resolves on rung 1 (track+artist+album), got {rung1Lookup.RungReached}");
-Assert(rung1Lookup.Recording?.RecordingId == "rec-autumn-leaves-X", "rung 1 lookup returns the correct recording id");
+    Console.WriteLine();
+    Console.WriteLine(new string('*', 88));
+    Console.WriteLine("*  " + text);
+    Console.WriteLine(new string('*', 88));
+}
 
-var ladderFallbackTrack = new EmbyTrackCredit
+static void Pause()
 {
-    TrackId = "track-ladder-fallback-check",
-    TrackName = "Ladder Fallback Case",
-    AlbumName = "A Different Listed Album", // deliberately wrong -- rungs 1/2 must both miss
-    AlbumId = "album-ladder-fallback",
-    Role = "AlbumArtist",
-};
-var rung3Lookup = recordingLookup.Lookup(FixtureMusicBrainzApiClient.MbidX, ladderFallbackTrack, artistName: "Sarah Vaughan");
-Assert(rung3Lookup.RungReached == RecordingLookupRung.TrackOnly, $"purpose-built case only resolves on rung 3 (track alone), got {rung3Lookup.RungReached}");
-Assert(rung3Lookup.Recording?.RecordingId == "rec-ladder-fallback", "rung 3 lookup returns the correct recording id");
+    // Skips cleanly when input is redirected/piped (CI, `dotnet run < /dev/null`,
+    // output captured to a file) rather than hanging forever waiting for a key
+    // that will never come.
+    if (Console.IsInputRedirected) return;
+    Console.WriteLine("\n[ press any key to continue ]");
+    Console.ReadKey(intercept: true);
+}
 
-var noHitLookup = recordingLookup.Lookup("mbid-nobody", ladderFallbackTrack, artistName: null);
-Assert(noHitLookup.RungReached == RecordingLookupRung.NotFound && noHitLookup.Recording == null, "a candidate with no matching recording at any rung correctly returns NotFound");
-
-var cachedLookup = recordingLookup.Lookup(FixtureMusicBrainzApiClient.MbidX, autumnLeavesTrack, artistName: "Sarah Vaughan");
-Assert(ReferenceEquals(rung1Lookup, cachedLookup), "repeat lookup for the same (candidate, track) pair returns the memoized instance, not a recomputed one");
-
-Console.WriteLine("\n--- RecordingLookup composer-tier relationship-scan (new, 2026-07-15) ---");
-var borrowedTimeTrack = new EmbyTrackCredit
+static void PrintObservationAvailability(EmbyArtist artist)
 {
-    TrackId = "track-borrowed-time-check",
-    TrackName = "Borrowed Time",
-    AlbumName = "One Cell in the Sea",
-    AlbumId = "album-one-cell-in-the-sea",
-    Role = "Composer",
-};
-var composerLookup = recordingLookup.LookupComposerTier(FixtureMusicBrainzApiClient.MbidGusBlack, borrowedTimeTrack, new[] { "A Fine Frenzy" });
-Assert(composerLookup.Recording?.RecordingId == "rec-borrowed-time", $"Gus Black's composer credit on \"Borrowed Time\" is now found via relationship-scan (got recording={composerLookup.Recording?.RecordingId ?? "null"})");
-Assert(composerLookup.RungReached == RecordingLookupRung.ComposerBorrowedNameTrackAlbum, $"found via the borrowed-name rung (A Fine Frenzy's own credit narrowed the search), got {composerLookup.RungReached}");
+    // Deliberately NOT listing every track here -- that's what made the previous
+    // version look like a batch feed. What's actually available is just a fact
+    // about the source data; which ones get consumed, in what order, one at a
+    // time, is the sampler's live decision and is announced by the sampler itself
+    // as each one is drawn (see "-- Observation #N" lines in the trace below).
+    if (artist.Tracks.Count == 0)
+    {
+        Console.WriteLine("\n0 observations available for this artist -- static evidence only, no sampling possible.");
+        return;
+    }
+    var counts = new[] { "AlbumArtist", "Artist", "Composer" }
+        .Select(role => $"{artist.Tracks.Count(t => t.Role == role)} {role}");
+    Console.WriteLine($"\n{artist.Tracks.Count} observation(s) available ({string.Join(", ", counts)}) -- sampled one at a time below, highest tier first.");
+}
 
-Console.WriteLine($"\n=== {(failures == 0 ? "ALL MECHANICS CHECKS PASS" : failures + " MECHANICS CHECK FAILURE(S)")} ===");
-return failures == 0 ? 0 : 1;
+static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, SimpleWeightedSumScorer scorer, HttpMusicBrainzApiClient mbClient)
+{
+    Console.WriteLine($"\n--- ARTIST EVIDENCE SUMMARY  ({repo.Candidates.Count} candidate(s) generated) ---");
+    if (repo.Candidates.Count == 0)
+    {
+        Console.WriteLine("  No candidates were generated for this artist -- nothing to score.");
+        return;
+    }
+
+    var scored = repo.Candidates
+        .Select(c => scorer.Score(c, repo.Evidence.Where(e => e.CandidateId == c.Id), config))
+        .OrderByDescending(s => s.RunningLlr)
+        .ToList();
+
+    for (int i = 0; i < scored.Count; i++)
+    {
+        var s = scored[i];
+        var rank = i == 0 ? "1st" : i == 1 ? "2nd" : $"{i + 1}th";
+        var name = mbClient.GetArtistDisplayName(s.Candidate.TargetId);
+        Console.WriteLine($"  [{rank}] {s.Candidate.TargetId}  \"{name}\"  strategy={s.Candidate.GenerationStrategy}  query={s.Candidate.GenerationQuery}");
+        Console.WriteLine($"        LLR={s.RunningLlr:F2}  confidence={s.Confidence:F3}  evidence={s.EvidenceSoFar.Count} record(s)");
+
+        var byType = s.EvidenceSoFar.GroupBy(e => e.EvidenceType).OrderByDescending(g => g.Count());
+        foreach (var g in byType)
+        {
+            var llr = config.EvidenceWeights.TryGetValue(g.Key, out var w) ? w.ToString("F2") : "n/a";
+            Console.WriteLine($"          {g.Key} x{g.Count()}  (weight={llr})");
+        }
+    }
+}
+
+static void PrintDecision(MatchResult result, ScoringConfig config)
+{
+    Console.WriteLine($"\n--- DECISION ---");
+    Console.WriteLine($"  status={result.Status}  target={result.TargetId}  confidence={result.Confidence:F3}  margin={result.Margin:F2}");
+    Console.WriteLine($"  thresholds: auto_accept >= {config.AutoAcceptThreshold:F2} LLR (with margin >= {config.MinMarginOverRunnerUp:F2}), auto_reject <= {config.AutoRejectThreshold:F2} LLR");
+}

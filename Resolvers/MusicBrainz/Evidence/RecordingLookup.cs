@@ -69,9 +69,17 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     public class RecordingLookup
     {
         private readonly IMusicBrainzApiClient _client;
+        private readonly MetadataHealthCheck.v2.Diagnostics.StructuredLogger? _logger;
         private readonly Dictionary<(string CandidateMbid, string TrackId), RecordingLookupResult> _cache = new();
 
-        public RecordingLookup(IMusicBrainzApiClient client) => _client = client;
+        // logger is optional (nullable) rather than required, 2026-07-16 -- this class
+        // predates logger threading through the plugin constructor and existing
+        // callers/tests shouldn't be forced to supply one just to keep compiling.
+        public RecordingLookup(IMusicBrainzApiClient client, MetadataHealthCheck.v2.Diagnostics.StructuredLogger? logger = null)
+        {
+            _client = client;
+            _logger = logger;
+        }
 
         /// <param name="candidateMbid">The candidate's MBID being confirmed.</param>
         /// <param name="track">The observed track (carries TrackName/AlbumName/TrackId).</param>
@@ -83,7 +91,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         {
             var key = (candidateMbid, track.TrackId);
             if (_cache.TryGetValue(key, out var cached))
+            {
+                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- cache hit (rung already resolved: {2}), no new API call.", candidateMbid, track.TrackName, cached.RungReached);
                 return cached;
+            }
 
             var result = Resolve(candidateMbid, track, artistName);
             _cache[key] = result;
@@ -96,21 +107,37 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             {
                 var rec = FindForCandidate(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, artistName));
                 var evaluated = EvaluateHit(candidateMbid, rec, RecordingLookupRung.TrackArtistAlbum);
-                if (evaluated != null) return evaluated;
+                if (evaluated != null)
+                {
+                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+artist+album).", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtistAlbum);
+                    return evaluated;
+                }
+                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track+artist+album) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtistAlbum);
             }
 
             {
                 var rec = FindForCandidate(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, null));
                 var evaluated = EvaluateHit(candidateMbid, rec, RecordingLookupRung.TrackAlbum);
-                if (evaluated != null) return evaluated;
+                if (evaluated != null)
+                {
+                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+album).", candidateMbid, track.TrackName, RecordingLookupRung.TrackAlbum);
+                    return evaluated;
+                }
+                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track+album) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackAlbum);
             }
 
             {
                 var rec = FindForCandidate(candidateMbid, _client.SearchRecording(track.TrackName, null, null));
                 var evaluated = EvaluateHit(candidateMbid, rec, RecordingLookupRung.TrackOnly);
-                if (evaluated != null) return evaluated;
+                if (evaluated != null)
+                {
+                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track alone).", candidateMbid, track.TrackName, RecordingLookupRung.TrackOnly);
+                    return evaluated;
+                }
+                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track alone) missed.", candidateMbid, track.TrackName, RecordingLookupRung.TrackOnly);
             }
 
+            _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- NOT CONFIRMED at any rung of the ladder.", candidateMbid, track.TrackName);
             return new RecordingLookupResult { Recording = null, RungReached = RecordingLookupRung.NotFound };
         }
 
@@ -175,7 +202,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         {
             var key = (candidateMbid, track.TrackId);
             if (_cache.TryGetValue(key, out var cached))
+            {
+                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" (composer-tier) -- cache hit (rung already resolved: {2}), no new API call.", candidateMbid, track.TrackName, cached.RungReached);
                 return cached;
+            }
 
             var result = ResolveComposerTier(candidateMbid, track, coCreditNames);
             _cache[key] = result;
@@ -187,19 +217,32 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             foreach (var name in coCreditNames.Where(n => !string.IsNullOrWhiteSpace(n)).Distinct(StringComparer.OrdinalIgnoreCase))
             {
                 var rec = FindConfirmedByRelationship(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, name));
-                if (rec != null) return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerBorrowedNameTrackAlbum };
+                if (rec != null)
+                {
+                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" (composer-tier) -- CONFIRMED via relationship scan, borrowed-name rung (co-credit=\"{2}\").", candidateMbid, track.TrackName, name);
+                    return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerBorrowedNameTrackAlbum };
+                }
             }
 
             {
                 var rec = FindConfirmedByRelationship(candidateMbid, _client.SearchRecording(track.TrackName, track.AlbumName, null));
-                if (rec != null) return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerTrackAlbum };
+                if (rec != null)
+                {
+                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" (composer-tier) -- CONFIRMED via relationship scan, track+album rung.", candidateMbid, track.TrackName);
+                    return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerTrackAlbum };
+                }
             }
 
             {
                 var rec = FindConfirmedByRelationship(candidateMbid, _client.SearchRecording(track.TrackName, null, null));
-                if (rec != null) return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerTrackOnly };
+                if (rec != null)
+                {
+                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" (composer-tier) -- CONFIRMED via relationship scan, track-alone rung.", candidateMbid, track.TrackName);
+                    return new RecordingLookupResult { Recording = rec, RungReached = RecordingLookupRung.ComposerTrackOnly };
+                }
             }
 
+            _logger?.Info("RecordingLookup", "[{0}] \"{1}\" (composer-tier) -- NOT CONFIRMED at any rung.", candidateMbid, track.TrackName);
             return new RecordingLookupResult { Recording = null, RungReached = RecordingLookupRung.NotFound };
         }
 

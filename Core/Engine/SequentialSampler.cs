@@ -59,7 +59,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
                     if (record == null) continue;
                     evidenceByCandidate[candidate.Id].Add(record);
                     repository.SaveEvidence(record);
-                    _logger.Debug("Sampler", "[{0}] static {1} :: {2}", candidate.TargetId, record.EvidenceType, record.Rationale);
+                    var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
+                    _logger.Debug("Sampler", "[{0}] static {1} (weight={2}) :: {3}", candidate.TargetId, record.EvidenceType, weight, record.Rationale);
                 }
             }
 
@@ -84,6 +85,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         int ceiling = config.BucketCeiling.TryGetValue(unit.BucketKey, out var c) ? c : int.MaxValue;
                         if (drawn >= ceiling) break; // bucket's budget exhausted -- escalate to next bucket
 
+                        _logger.Info("Sampler", "\n-- Observation #{0} ({1} bucket): {2}", drawn + 1, unit.BucketKey, unit.Describe());
+
                         foreach (var candidate in candidates)
                         {
                             foreach (var collector in _observationCollectors)
@@ -92,7 +95,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
                                 if (record == null) continue;
                                 evidenceByCandidate[candidate.Id].Add(record);
                                 repository.SaveEvidence(record);
-                                _logger.Debug("Sampler", "[{0}] {1} ({2}) :: {3}", candidate.TargetId, record.EvidenceType, unit.BucketKey, record.Rationale);
+                                var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
+                                _logger.Debug("Sampler", "  [{0}] {1} (weight={2}) {3} :: {4}", candidate.TargetId, record.EvidenceType, weight, unit.BucketKey, record.Rationale);
                             }
                         }
                         drawn++;

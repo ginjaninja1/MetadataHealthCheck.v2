@@ -35,12 +35,18 @@ namespace MetadataHealthCheck.v2.Fixtures
     /// the artist currently under review -- matching real Emby E2 query shape
     /// (§8.2) and the settled design decision that observation units must carry
     /// full track context, not a siloed per-artist view. EmbyTrackCredit.Role (the
-    /// artist-under-review's own tier on this track) is derived automatically: for
-    /// the enclosing ARTIST block's DisplayName, this loader emits one
-    /// EmbyTrackCredit per role-list (AlbumArtist/Artist/Composer) that contains a
-    /// name matching that DisplayName (case-insensitive) -- usually one, but
-    /// nothing stops a real track crediting the same person in two roles, which
-    /// would legitimately produce two observation units for that track.
+    /// artist-under-review's own tier on this track) is derived automatically: the
+    /// SINGLE highest tier (AlbumArtist > Artist > Composer, §5.3's priority order)
+    /// at which the enclosing ARTIST block's DisplayName appears on that track,
+    /// matched case-insensitively. One physical track always produces exactly one
+    /// observation unit -- CORRECTED 2026-07-16 (was: one observation per role list
+    /// the artist appeared in, so a track crediting the same person as both
+    /// AlbumArtist and Artist silently produced two observation units for one
+    /// physical track, double-counting it and corrupting the sampler's bucketing).
+    /// The role-tier distinction is real signal (a future case may sample
+    /// composer-tier observations differently from album-artist-tier ones), not a
+    /// cosmetic label -- it must describe one true fact about where this artist was
+    /// observed, not every role list they happen to appear in.
     ///
     /// Disambiguating the ARTIST keyword: top-level "ARTIST &lt;id&gt; &quot;name&quot;"
     /// (two tokens then a quoted string) only appears outside a TRACK block; the
@@ -71,11 +77,25 @@ namespace MetadataHealthCheck.v2.Fixtures
             {
                 if (currentArtist == null || currentTrack == null) { currentTrack = null; return; }
 
-                foreach (var (role, list) in new[] { ("AlbumArtist", currentTrack.AlbumArtists), ("Artist", currentTrack.Artists), ("Composer", currentTrack.Composers) })
-                {
-                    if (!list.Any(c => string.Equals(c.Name, currentArtist.DisplayName, StringComparison.OrdinalIgnoreCase)))
-                        continue;
+                // CHANGED 2026-07-16 (Nick's explicit correction): a physical track is
+                // ONE observation, not one observation per role list the artist happens
+                // to appear in. Highest tier wins (AlbumArtist > Artist > Composer) --
+                // this is a real, meaningful distinction (§5.3's role-tier priority),
+                // not a cosmetic collapse: a track that credits someone as both
+                // AlbumArtist and Artist is still just one fact about where this artist
+                // was OBSERVED, at their strongest tier on that track. The previous
+                // version emitted a second EmbyTrackCredit for the same track at the
+                // weaker tier too, which silently double-counted the same physical
+                // track as two separate observation units and could put it in two
+                // different sampler buckets at once.
+                string? role =
+                    currentTrack.AlbumArtists.Any(c => string.Equals(c.Name, currentArtist.DisplayName, StringComparison.OrdinalIgnoreCase)) ? "AlbumArtist" :
+                    currentTrack.Artists.Any(c => string.Equals(c.Name, currentArtist.DisplayName, StringComparison.OrdinalIgnoreCase)) ? "Artist" :
+                    currentTrack.Composers.Any(c => string.Equals(c.Name, currentArtist.DisplayName, StringComparison.OrdinalIgnoreCase)) ? "Composer" :
+                    null;
 
+                if (role != null)
+                {
                     currentArtist.Tracks.Add(new EmbyTrackCredit
                     {
                         TrackId = currentTrack.TrackId,

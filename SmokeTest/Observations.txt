@@ -6,11 +6,23 @@
 # this artist's own credit) -- this artist's own Role is derived automatically from
 # whichever role-list contains their DisplayName.
 #
-# Every artist/track/album/relationship fact below must stay consistent with
-# Fixtures/FixtureMusicBrainzApiClient.cs, since that's what actually answers the
-# engine's MusicBrainz calls in this sandbox -- inventing a track here that the MB
-# fixture doesn't know about will just produce "no recording found", not a new
-# test case. Extend both files together when adding genuinely new material.
+# UPDATED 2026-07-16: SmokeTest now runs against LIVE MusicBrainz data (the Emby
+# mirror, via HttpMusicBrainzApiClient) -- FixtureMusicBrainzApiClient is no longer
+# used here. This means every artist/track/album fact below is checked against
+# what's ACTUALLY in MusicBrainz right now, not a hand-authored fixture -- there is
+# no "fixture doesn't know about it" failure mode anymore, only "MusicBrainz's real
+# data does or doesn't corroborate this".
+#
+# UPDATED AGAIN 2026-07-16: removed the PROVIDERIDS line that used to sit on the
+# first Sarah Vaughan track (mbid-sarah-vaughan-correct) -- it was a fake,
+# fixture-era MBID that would never match a real live candidate anyway, AND
+# separately, per Nick's later correction, PROVIDERIDS is track-scoped in the
+# schema while a "known MBID for a credited name" fact is really an ARTIST-level
+# one (see EmbyCreditedName.Mbid / the mbid= tags below) -- so it was wrong on two
+# independent grounds, not just stale data. Not replaced with anything; Tier 0
+# isn't meant to steer this example.
+# Add genuinely new material directly here; it no longer needs a matching entry
+# anywhere else.
 #
 # Exported 2026-07-15 from the previously hardcoded FixtureEmbyLibraryReader.cs and
 # SmokeTest/Program.cs object literals (Project Log Directives: sample data must
@@ -21,9 +33,7 @@
 # ---------------------------------------------------------------------------
 # Sarah Vaughan -- AlbumArtist tier. §18's worked example (rung 1, full-triple
 # corroboration) plus a second real track so multi-observation sampling has
-# something genuine to walk through. PROVIDERIDS on the first track demonstrates
-# the new Tier 0 collector (ProviderIdEvidenceCollector.cs) -- since it's worth
-# +5.0 on its own, this artist should now resolve after a single observation.
+# something genuine to walk through.
 # ---------------------------------------------------------------------------
 
 ARTIST emby-artist-sarah-vaughan "Sarah Vaughan"
@@ -31,7 +41,6 @@ ARTIST emby-artist-sarah-vaughan "Sarah Vaughan"
 TRACK track-autumn-leaves "Autumn Leaves"
 ALBUM album-crazy-and-mixed-up "Crazy and Mixed Up"
 DURATION_MS 335240
-PROVIDERIDS MusicBrainzArtist=mbid-sarah-vaughan-correct
 ALBUMARTIST "Sarah Vaughan"
 ARTIST "Sarah Vaughan"
 
@@ -101,61 +110,53 @@ ALBUMARTIST "Florence + the Machine"
 ARTIST "Florence + the Machine"
 
 # ---------------------------------------------------------------------------
-# Sarah Vaughan (ceiling) -- pure sampler-mechanics probe, not a real-world
-# case: BucketCeiling["AlbumArtist"]=3 (ScoringConfig.cs) means only the first
-# 3 AlbumArtist-tier observations drawn are ever evaluated. Three dead tracks
-# (unknown to the MB fixture -> no recording found) fill the ceiling; a 4th,
-# real, fully-corroborating "Autumn Leaves" track sits past it and must never
-# get drawn -- if the ceiling isn't enforced, this artist would wrongly
-# auto_accept instead of landing on needs_review.
+# Real-world multi-credit example, added 2026-07-16 (Nick's request): every
+# real MBID here was looked up individually from real MusicBrainz/Wikidata
+# pages (not invented), for the recording MusicBrainz calls "Rich Woman" by
+# Robert Plant | Alison Krauss, recording MBID
+# 12896d5b-2e81-4543-b599-140368f311af, from the 2007 album "Raising Sand".
+# Deliberately has 2 AlbumArtists, 2 (same) Artists, and 2 Composers, all with
+# real mbid= tags -- exercises the full credit shape a real Emby track can
+# carry, not a synthetic single-artist case. The two ARTIST blocks below both
+# observe the SAME physical track, from two different artists' point of view
+# (Robert Plant is AlbumArtist-tier on it; so is Alison Krauss) -- a
+# deliberate case of the same track being a real, valid observation for two
+# different artists under scrutiny.
+#
+# Real MusicBrainz artist MBIDs used below:
+#   Robert Plant     bd53f9a7-8be9-46b0-bf7d-1deea3cb57bc
+#   Alison Krauss    6b064ead-91a4-4ac8-8076-b1febe4f4aac
+#   Dorothy LaBostrie (composer)  f3897319-c9a4-4550-8b20-de5d508f8f15
+#   Li'l Millet / McKinley Millet (composer)  8ca349d2-bb44-4186-8a3a-e9bf89df71a9
+#
+# NOTE 2026-07-16: deliberately carries NO PROVIDERIDS (Tier 0) line. That field
+# is currently track-scoped in EmbyTrackCredit, but a track can have multiple
+# credited names (as this one does) -- Tier 0's real home is probably per-credit
+# (EmbyCreditedName.Mbid, the mbid= tags below), which already exists but isn't
+# consumed by any collector yet. Open question, not resolved here -- see Project
+# Log. This example uses ONLY the mbid= tags, which are the uncontested part.
 # ---------------------------------------------------------------------------
 
-ARTIST emby-artist-sarah-vaughan-ceiling "Sarah Vaughan"
+ARTIST emby-artist-robert-plant "Robert Plant"
 
-TRACK c-dead-1 "Ceiling Filler One"
-ALBUM album-filler-1 "Filler Album 1"
-ALBUMARTIST "Sarah Vaughan"
+TRACK track-rich-woman "Rich Woman"
+ALBUM album-raising-sand "Raising Sand"
+DURATION_MS 245000
+ALBUMARTIST "Robert Plant" mbid=bd53f9a7-8be9-46b0-bf7d-1deea3cb57bc
+ALBUMARTIST "Alison Krauss" mbid=6b064ead-91a4-4ac8-8076-b1febe4f4aac
+ARTIST "Robert Plant" mbid=bd53f9a7-8be9-46b0-bf7d-1deea3cb57bc
+ARTIST "Alison Krauss" mbid=6b064ead-91a4-4ac8-8076-b1febe4f4aac
+COMPOSER "Dorothy LaBostrie" mbid=f3897319-c9a4-4550-8b20-de5d508f8f15
+COMPOSER "Li'l Millet" mbid=8ca349d2-bb44-4186-8a3a-e9bf89df71a9
 
-TRACK c-dead-2 "Ceiling Filler Two"
-ALBUM album-filler-2 "Filler Album 2"
-ALBUMARTIST "Sarah Vaughan"
+ARTIST emby-artist-alison-krauss "Alison Krauss"
 
-TRACK c-dead-3 "Ceiling Filler Three"
-ALBUM album-filler-3 "Filler Album 3"
-ALBUMARTIST "Sarah Vaughan"
-
-TRACK c-autumn-leaves-blocked "Autumn Leaves"
-ALBUM album-crazy-and-mixed-up "Crazy and Mixed Up"
-ALBUMARTIST "Sarah Vaughan"
-
-# ---------------------------------------------------------------------------
-# Sarah Vaughan (exhaustion) -- pure sampler-mechanics probe: dead tracks
-# across all three buckets, nothing resolves anywhere. Must terminate cleanly
-# on needs_review after exhausting every bucket's ceiling, not hang or throw.
-# ---------------------------------------------------------------------------
-
-ARTIST emby-artist-sarah-vaughan-exhaustion "Sarah Vaughan"
-
-TRACK x-albumartist-1 "Nothing Here AA1"
-ALBUM album-empty-aa1 "Empty Album AA1"
-ALBUMARTIST "Sarah Vaughan"
-
-TRACK x-albumartist-2 "Nothing Here AA2"
-ALBUM album-empty-aa2 "Empty Album AA2"
-ALBUMARTIST "Sarah Vaughan"
-
-TRACK x-artist-1 "Nothing Here A1"
-ALBUM album-empty-a1 "Empty Album A1"
-ARTIST "Sarah Vaughan"
-
-TRACK x-artist-2 "Nothing Here A2"
-ALBUM album-empty-a2 "Empty Album A2"
-ARTIST "Sarah Vaughan"
-
-TRACK x-composer-1 "Nothing Here C1"
-ALBUM album-empty-c1 "Empty Album C1"
-COMPOSER "Sarah Vaughan"
-
-TRACK x-composer-2 "Nothing Here C2"
-ALBUM album-empty-c2 "Empty Album C2"
-COMPOSER "Sarah Vaughan"
+TRACK track-rich-woman "Rich Woman"
+ALBUM album-raising-sand "Raising Sand"
+DURATION_MS 245000
+ALBUMARTIST "Robert Plant" mbid=bd53f9a7-8be9-46b0-bf7d-1deea3cb57bc
+ALBUMARTIST "Alison Krauss" mbid=6b064ead-91a4-4ac8-8076-b1febe4f4aac
+ARTIST "Robert Plant" mbid=bd53f9a7-8be9-46b0-bf7d-1deea3cb57bc
+ARTIST "Alison Krauss" mbid=6b064ead-91a4-4ac8-8076-b1febe4f4aac
+COMPOSER "Dorothy LaBostrie" mbid=f3897319-c9a4-4550-8b20-de5d508f8f15
+COMPOSER "Li'l Millet" mbid=8ca349d2-bb44-4186-8a3a-e9bf89df71a9

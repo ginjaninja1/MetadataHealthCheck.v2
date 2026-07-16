@@ -22,6 +22,13 @@ public class InMemoryMatchRepository : IMatchRepository
     private readonly List<EvidenceRecord> _evidence = new();
     private readonly List<MatchResult> _results = new();
 
+    // Exposed 2026-07-16 so SmokeTest/Program.cs can build a post-run, per-artist
+    // evidence/score summary -- everything ResolveOne generated for this artist is
+    // already sitting here (fresh repo instance per artist), no engine changes
+    // needed to surface it.
+    public IReadOnlyList<Candidate> Candidates => _candidates;
+    public IReadOnlyList<EvidenceRecord> Evidence => _evidence;
+
     public void SaveCandidate(Candidate candidate) => _candidates.Add(candidate);
     public void SaveEvidence(EvidenceRecord evidence) => _evidence.Add(evidence);
     public void SaveMatchResult(MatchResult result) => _results.Add(result);

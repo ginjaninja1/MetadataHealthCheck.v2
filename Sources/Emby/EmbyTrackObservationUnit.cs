@@ -1,4 +1,5 @@
-﻿using MetadataHealthCheck.v2.Core.Model;
+﻿using System.Linq;
+using MetadataHealthCheck.v2.Core.Model;
 
 namespace MetadataHealthCheck.v2.Sources.Emby
 {
@@ -15,5 +16,13 @@ namespace MetadataHealthCheck.v2.Sources.Emby
         public EmbyTrackObservationUnit(EmbyTrackCredit track) => Track = track;
 
         public string BucketKey => Track.Role;
+
+        public string Describe()
+        {
+            var providerIds = Track.ProviderIds.Count > 0
+                ? " ProviderIds: " + string.Join(", ", Track.ProviderIds.Select(p => $"{p.Key}={p.Value}"))
+                : "";
+            return $"\"{Track.TrackName}\" on \"{Track.AlbumName}\"  [{Track.Role}]{providerIds}";
+        }
     }
 }

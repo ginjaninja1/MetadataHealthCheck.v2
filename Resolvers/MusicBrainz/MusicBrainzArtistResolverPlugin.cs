@@ -28,18 +28,30 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         // built/verified in the sandbox, so a signature change risks silently breaking the
         // composition root (§12.3) wiring without any way to catch it here. Flagged as a
         // small next-session cleanup, not fixed in this pass.
-        public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, IIdentityCache identityCache, ScoringConfig scoringConfig)
+        //
+        // logger ADDED 2026-07-16 (Nick's explicit request): candidate generation
+        // (SoftBucketStrategy's admit/drop decisions) and RecordingLookup's entire
+        // confirmation ladder were completely invisible before this -- this constructor
+        // had no way to give them one. Optional (nullable) so any other caller that
+        // doesn't have a logger handy isn't forced to break. Composition root callers
+        // (SmokeTest/Program.cs, eventually the real Emby host wiring) should pass one.
+        public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, IIdentityCache identityCache, ScoringConfig scoringConfig, MetadataHealthCheck.v2.Diagnostics.StructuredLogger? logger = null)
         {
-            // Shared across every collector that needs to confirm a candidate against a
-            // specific track (§7.2 C3/C4). Now also used by SoftBucketStrategy itself for
-            // per-candidate confirmation (2026-07-13, artist-search-first rewrite), not just
-            // by evidence collectors — so its per-(candidate,track) memoization pays off
-            // across candidate generation AND scoring within one resolution run.
-            var recordingLookup = new RecordingLookup(client);
+            // Shared across every per-observation collector that needs to confirm a
+            // candidate against a specific track (§7.2 C3/C4): WorkRelationshipEvidenceCollector,
+            // RecordingRelationshipEvidenceCollector, CorroborationTierEvidenceCollector below.
+            // NOT used by SoftBucketStrategy any more (2026-07-16) -- candidate generation used
+            // to also do its own separate recording-lookup confirmation pass here ("Phase 2"),
+            // bypassing the Track Observation Feeder entirely; removed as architecturally wrong
+            // (see SoftBucketStrategy.cs's own doc comment). Recording lookups now happen
+            // exclusively inside the Engine's Feeder-ordered per-observation loop, via these
+            // collectors -- one shared instance, so its per-(candidate,track) memoization still
+            // pays off across every collector that touches it within one resolution run.
+            var recordingLookup = new RecordingLookup(client, logger);
 
             Strategies = new ICandidateGenerationStrategy<EmbyArtist>[]
             {
-                new SoftBucketStrategy(client, recordingLookup, scoringConfig), // artist-search-first generation + confirmation, spec §5.1
+                new SoftBucketStrategy(client, scoringConfig, logger), // artist-search-first generation, spec §5.1 -- name/alias filtering only, no recording lookups; confirmation happens entirely inside the Engine's per-observation loop now (2026-07-16)
                 // AnchoredRecordingStrategy.cs is retained in the repo but deliberately not
                 // registered here. Anchoring is a parked concept (spec §5.1/§10.1) — wiring
                 // it in alongside SoftBucketStrategy risked duplicate candidates with split

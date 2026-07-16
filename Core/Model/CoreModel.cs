@@ -19,7 +19,16 @@ namespace MetadataHealthCheck.v2.Core.Model
     public interface IObservationUnit
     {
         string BucketKey { get; }
+
+        // Added 2026-07-16 for SmokeTest readability (Nick's explicit request): the
+        // sampler needs to announce each observation's raw content, one at a time, as
+        // it's actually consumed -- not have a caller print the whole source entity's
+        // observation list upfront, which misrepresents the one-at-a-time flow as a
+        // batch. Deliberately just a human-readable string, same "opaque to Core"
+        // philosophy as BucketKey -- Core/Engine never interprets what's inside it.
+        string Describe();
     }
+
 
     public class Candidate
     {
