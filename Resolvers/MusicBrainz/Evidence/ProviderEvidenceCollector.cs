@@ -33,15 +33,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         public string EvidenceType => "ProviderIds";
 
-        public EvidenceRecord? Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
+        public IEnumerable<EvidenceRecord> Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
         {
-            if (unit is not EmbyTrackObservationUnit trackUnit) return null;
+            if (unit is not EmbyTrackObservationUnit trackUnit) yield break;
             var track = trackUnit.Track;
 
-            if (!track.ProviderIds.TryGetValue(ProviderIdKey, out var taggedMbid)) return null;
-            if (!string.Equals(taggedMbid, candidate.TargetId, StringComparison.OrdinalIgnoreCase)) return null;
+            if (!track.ProviderIds.TryGetValue(ProviderIdKey, out var taggedMbid)) yield break;
+            if (!string.Equals(taggedMbid, candidate.TargetId, StringComparison.OrdinalIgnoreCase)) yield break;
 
-            return new EvidenceRecord
+            yield return new EvidenceRecord
             {
                 CandidateId = candidate.Id,
                 EvidenceType = "ProviderIds.Confirmed",

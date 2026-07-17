@@ -33,9 +33,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         public string EvidenceType => "RecordingRelationship";
 
-        public EvidenceRecord? Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
+        // DORMANT (2026-07-17): unwired from MusicBrainzArtistResolverPlugin --
+        // superseded by RecordingCorroborationEvidenceCollector. Signature updated to
+        // match the widened IObservationEvidenceCollector interface purely so this
+        // file still compiles while sitting unused; logic otherwise untouched.
+        public IEnumerable<EvidenceRecord> Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
         {
-            if (unit is not EmbyTrackObservationUnit trackUnit) return null;
+            if (unit is not EmbyTrackObservationUnit trackUnit) yield break;
             var track = trackUnit.Track;
 
             // Composer-tier: relationship-scan path (§5.1's Composer-tier variant) --
@@ -53,13 +57,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 lookup = _recordingLookup.Lookup(candidate.TargetId, track, artistName: source.DisplayName);
             }
             var rec = lookup.Recording;
-            if (rec == null) return null;
+            if (rec == null) yield break;
 
             var rels = _client.GetRelationships(rec.RecordingId)
                 .Where(r => r.Level == RelationshipLevel.Recording && r.ArtistMbid == candidate.TargetId)
                 .ToList();
 
-            if (rels.Count == 0) return null;
+            if (rels.Count == 0) yield break;
 
             var rel = rels[0];
             string evidenceType = rel.RelationshipType.ToLowerInvariant() switch
@@ -69,7 +73,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 _ => "RecordingRelationship.Other",
             };
 
-            return new EvidenceRecord
+            yield return new EvidenceRecord
             {
                 CandidateId = candidate.Id,
                 EvidenceType = evidenceType,

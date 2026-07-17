@@ -91,12 +91,14 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         {
                             foreach (var collector in _observationCollectors)
                             {
-                                var record = collector.Collect(source, candidate, unit, context);
-                                if (record == null) continue;
-                                evidenceByCandidate[candidate.Id].Add(record);
-                                repository.SaveEvidence(record);
-                                var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
-                                _logger.Debug("Sampler", "  [{0}] {1} (weight={2}) {3} :: {4}", candidate.TargetId, record.EvidenceType, weight, unit.BucketKey, record.Rationale);
+                                foreach (var record in collector.Collect(source, candidate, unit, context))
+                                {
+                                    if (record == null) continue;
+                                    evidenceByCandidate[candidate.Id].Add(record);
+                                    repository.SaveEvidence(record);
+                                    var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
+                                    _logger.Debug("Sampler", "  [{0}] {1} (weight={2}) {3} :: {4}", candidate.TargetId, record.EvidenceType, weight, unit.BucketKey, record.Rationale);
+                                }
                             }
                         }
                         drawn++;

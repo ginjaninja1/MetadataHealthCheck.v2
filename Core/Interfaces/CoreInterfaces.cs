@@ -31,10 +31,20 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
     // Per-observation evidence (§5.4) -- re-run once per sampled IObservationUnit,
     // as many times as the Sequential Sampler (§5.5) draws units. Never called
     // directly by anything except SequentialSampler.
+    //
+    // WIDENED 2026-07-17: Collect now returns zero or more EvidenceRecords rather
+    // than at most one. Motivated by collapsing WorkRelationshipEvidenceCollector /
+    // RecordingRelationshipEvidenceCollector / CorroborationTierEvidenceCollector
+    // into a single RecordingCorroborationEvidenceCollector that does ONE
+    // RecordingLookup call per observation and then reports every evidence type
+    // (tier, writer/composer relationship, producer/arranger relationship) it can
+    // find on that same recording, instead of three collectors each doing their
+    // own separate (and inconsistently-argued) lookup. Return an empty sequence,
+    // never null, when there's nothing to report.
     public interface IObservationEvidenceCollector<TSourceEntity> where TSourceEntity : ISourceEntity
     {
         string EvidenceType { get; }
-        EvidenceRecord? Collect(TSourceEntity source, Candidate candidate, IObservationUnit unit, ResolutionContext context);
+        IEnumerable<EvidenceRecord> Collect(TSourceEntity source, Candidate candidate, IObservationUnit unit, ResolutionContext context);
     }
 
     // Optional -- entity types with no natural observation/role concept (§11.4's

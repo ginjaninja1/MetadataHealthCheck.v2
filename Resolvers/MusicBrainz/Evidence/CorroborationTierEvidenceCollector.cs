@@ -31,9 +31,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         public string EvidenceType => "CorroborationTier";
 
-        public EvidenceRecord? Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
+        // DORMANT (2026-07-17): unwired from MusicBrainzArtistResolverPlugin --
+        // superseded by RecordingCorroborationEvidenceCollector. Signature updated to
+        // match the widened IObservationEvidenceCollector interface purely so this
+        // file still compiles while sitting unused; logic otherwise untouched.
+        public IEnumerable<EvidenceRecord> Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
         {
-            if (unit is not EmbyTrackObservationUnit trackUnit) return null;
+            if (unit is not EmbyTrackObservationUnit trackUnit) yield break;
             var track = trackUnit.Track;
 
             // Composer-tier: relationship-scan path -- see WorkRelationshipEvidenceCollector.
@@ -48,7 +52,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 lookup = _recordingLookup.Lookup(candidate.TargetId, track, artistName: source.DisplayName);
             }
             var rec = lookup.Recording;
-            if (rec == null) return null;
+            if (rec == null) yield break;
 
             string tier = (rec.TrackTitleMatches, rec.ReleaseTitleMatches) switch
             {
@@ -57,7 +61,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 _ => "CorroborationTier.Tier3",
             };
 
-            return new EvidenceRecord
+            yield return new EvidenceRecord
             {
                 CandidateId = candidate.Id,
                 EvidenceType = tier,

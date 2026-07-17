@@ -62,15 +62,24 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
             EvidenceCollectors = new IEvidenceCollector<EmbyArtist>[]
             {
                 new NameDistanceEvidenceCollector(client),
-                new AlbumMatchEvidenceCollector(client), // §5.2 precursor
+                // AlbumMatchEvidenceCollector parked 2026-07-17 (unwired, not deleted).
+                // §5.2 static evidence, confirmed deliberate rather than a bug, but its
+                // cost (a full GetReleaseGroupTitles call per candidate before any
+                // observation sampling even starts) was flagged as an open question.
+                // Re-add only if evidence from testing shows it's actually needed.
+                // new AlbumMatchEvidenceCollector(client),
             };
 
             ObservationEvidenceCollectors = new IObservationEvidenceCollector<EmbyArtist>[]
             {
                 new ProviderIdEvidenceCollector(), // Tier 0, §6.1 -- built 2026-07-15
-                new WorkRelationshipEvidenceCollector(client, recordingLookup),
-                new RecordingRelationshipEvidenceCollector(client, recordingLookup),
-                new CorroborationTierEvidenceCollector(recordingLookup),
+                // WorkRelationshipEvidenceCollector, RecordingRelationshipEvidenceCollector,
+                // and CorroborationTierEvidenceCollector were collapsed into this single
+                // collector 2026-07-17 -- see RecordingCorroborationEvidenceCollector.cs's
+                // doc comment for why (three collectors were each independently deciding
+                // how to call the shared RecordingLookup, causing real cache-collision
+                // bugs). The three old files remain in the repo, unwired, not deleted.
+                new RecordingCorroborationEvidenceCollector(client, recordingLookup),
                 // NOT built: AliasEvidenceCollector.cs, which §11.2's file tree still
                 // lists as planned. Left out deliberately, not just not-yet-started —
                 // §6.1/§5.3's own retirement notes say alias-match is no longer a
