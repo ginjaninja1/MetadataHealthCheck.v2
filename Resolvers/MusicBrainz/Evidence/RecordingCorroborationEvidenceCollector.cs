@@ -133,6 +133,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     SourceTrackId = track.TrackId,
                     AlbumId = track.AlbumId,
                     RelationshipType = workRel.RelationshipType,
+                    // Opportunistic (2026-07-17): found because we already had this
+                    // recording confirmed, not because the decision needs it. Does not
+                    // affect score/auto_accept -- see EvidenceRecord.Contributing.
+                    Contributing = false,
                     Rationale = $"MusicBrainz credits this artist as {workRel.RelationshipType} on \"{track.TrackName}\".",
                 };
             }
@@ -157,6 +161,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     AlbumId = track.AlbumId,
                     RelationshipType = recordingRel.RelationshipType,
                     MatchedViaAlias = lookup.MatchedViaAlias,
+                    // Opportunistic (2026-07-17): see WorkRelationship note above.
+                    Contributing = false,
                     Rationale = $"MusicBrainz credits this artist as {recordingRel.RelationshipType} on \"{track.TrackName}\".",
                 };
             }

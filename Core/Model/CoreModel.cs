@@ -59,6 +59,18 @@ namespace MetadataHealthCheck.v2.Core.Model
         // CorroborationTierEvidenceCollector; the actual NameMatchWeight/AliasMatchWeight
         // multiplier this drives is applied by the scorer, not baked in here (§5.3/§6.3).
         public bool MatchedViaAlias { get; set; }
+        // Added 2026-07-17 alongside the "opportunistic evidence" directive: relationship
+        // evidence (WorkRelationship.*/RecordingRelationship.*) is pulled from the same
+        // recording lookup as Corroboration Tier "because we're already there", purely so
+        // we can see in the log whether it would ever have mattered -- NOT because it's
+        // meant to influence auto_accept/needs_review/reject today. Contributing=false
+        // means: still logged, still saved to the repository, but excluded from the sum
+        // SimpleWeightedSumScorer actually uses to decide. Default true (the normal case)
+        // so every existing collector's behavior is unchanged unless explicitly opted out.
+        // Re-promote a type to Contributing=true only on a deliberate decision once we've
+        // seen enough of these in real logs to know it's worth the cost (see
+        // AlbumMatchEvidenceCollector, parked the same way).
+        public bool Contributing { get; set; } = true;
         public string Rationale { get; set; } = "";               // human-readable sentence — always populated, §5.6
     }
 

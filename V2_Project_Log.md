@@ -205,73 +205,12 @@ still correct in meaning, wrong number. Low-priority hygiene pass, not
 urgent — flagged so it doesn't get mistaken for a real spec-vs-code
 divergence later.
 
-### H. `EmbyArtistObservationUnitProvider` — 3 of 5 feed-order rules missing
-Against §5.3.1's 5 distance-seeking rules:
-
-- Rule 1 (different-album-first) — **implemented**.
-- Rule 3 (different-title-first) — **implemented**.
-- Rule 2 (single-credit-tracks-first) — **not implemented**, blocked on a
-  real data gap: needs the full credit list for a track, not just this
-  artist's own credit. `EmbyTrackCredit` doesn't carry that yet.
-- Rule 4 (longer-track-titles-first) — **not implemented**. No known data
-  gap — `TrackName` is already on `EmbyTrackCredit` — so this is likely
-  just unwritten, not a model change. Worth confirming with a quick look
-  before assuming it's free, per the open question below.
-- Rule 5 (shorter-albums-first, <20 tracks) — **not implemented**, blocked
-  on a real data gap: needs a true per-album track count, not just how many
-  of an album's tracks this artist happens to be credited on.
-
-Two distinct kinds of "outstanding" here, worth keeping separate when this
-is picked up: rules 2 and 5 are genuinely blocked on widening
-`EmbyTrackCredit`/`EmbyLibraryReader`'s E2 read; rule 4 is not blocked on
-anything currently known and may just need writing.
+### H. A prototype evidence gathering and  scoring engine.
+Onoging
 
 ### I. Smoke test apparatus
-Paused, per explicit prior direction. Not treated as outstanding work and
-not to be proposed as a task until you decide to revisit it.
-
+Being used to evaluate engine with sample observations
+Onoging
 ---
 
-## 3. Next
 
-**Single next priority: build the composer-tier (relationship-scan)
-confirmation path (Outstanding item A).**
-
-This was deliberately chosen over the smaller/easier items in Outstanding
-(B, C, D, G) because it forces a genuine end-to-end proof of the pipeline
-against the hardest real case already in the fixture set (Gus Black), not
-just another isolated unit. Concretely, this means:
-
-1. Extend `RecordingLookup` (or add an adjacent method) with a
-   relationship-scan path: query track+album (falling back to track alone)
-   with **no artist-name field**, then scan the returned recording(s)'
-   relationship data (`work-rels`/`work-level-rels`/`artist-rels`, per C5)
-   for the candidate's MBID — rather than filtering candidate recordings by
-   `ArtistMbid == candidateMbid` first, as the current name-bearing path
-   does.
-2. Wire `SoftBucketStrategy`'s Stage 2 to select the relationship-scan
-   variant when the observation's bucket is Composer, per §5.1.
-3. Confirm `WorkRelationshipEvidenceCollector` and
-   `RecordingRelationshipEvidenceCollector` can draw on this new path so
-   composer-tier evidence actually accumulates, not just candidate
-   confirmation.
-4. Prove it against the Gus Black fixture end-to-end: candidate generated,
-   confirmed via relationship-scan, evidence accumulated, decision gate
-   reached — not a synthetic unit test in isolation.
-
-Items B, C, D, and G above are small and can be picked up opportunistically
-alongside this work (B and C in particular touch the same files), but none
-of them are the priority — A is.
-
----
-
-## 4. Open questions for you (not blocking, but unresolved)
-
-- Item H, rule 4 (longer-track-titles-first) looks like it may be
-  unblocked — `TrackName` is already on the model — worth 10 minutes to
-  confirm and just implement it, separately from rules 2/5 which are
-  genuinely waiting on `EmbyTrackCredit`/E2 widening.
-- The cosmetic filename typo (`ArtistnameNormalizer.cs`) and the stale
-  comment references (item G) — fine to batch into a single small hygiene
-  pass whenever convenient, or leave alone indefinitely; neither affects
-  correctness.

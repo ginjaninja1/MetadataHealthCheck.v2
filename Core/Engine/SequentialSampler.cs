@@ -47,10 +47,13 @@ namespace MetadataHealthCheck.v2.Core.Engine
         {
             var evidenceByCandidate = candidates.ToDictionary(c => c.Id, c => new List<EvidenceRecord>());
 
+            Banner($"BEGIN RESOLUTION: {source.DisplayName}");
+
             // Step 1: static, candidate-pair-level evidence -- once per candidate,
             // regardless of what follows (§5.4). This also covers §5.2's album-match
             // precursor once that collector exists: if it alone crosses a bound, no
             // track-level sampling ever runs (§18's worked example).
+            Banner("STATIC EVIDENCE");
             foreach (var candidate in candidates)
             {
                 foreach (var collector in _staticCollectors)
@@ -59,15 +62,16 @@ namespace MetadataHealthCheck.v2.Core.Engine
                     if (record == null) continue;
                     evidenceByCandidate[candidate.Id].Add(record);
                     repository.SaveEvidence(record);
-                    var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
-                    _logger.Debug("Sampler", "[{0}] static {1} (weight={2}) :: {3}", candidate.TargetId, record.EvidenceType, weight, record.Rationale);
+                    LogEvidence(candidate.TargetId, record, config, prefix: "static ", indent: "");
                 }
             }
+            Banner("END STATIC EVIDENCE");
 
             var decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
             if (decision.Status != "needs_review")
             {
                 _logger.Debug("Sampler", "Resolved from static evidence alone for {0}; no track-level sampling needed.", source.DisplayName);
+                LogDecisionSummary(source, evidenceByCandidate, decision);
                 return decision;
             }
 
@@ -85,7 +89,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         int ceiling = config.BucketCeiling.TryGetValue(unit.BucketKey, out var c) ? c : int.MaxValue;
                         if (drawn >= ceiling) break; // bucket's budget exhausted -- escalate to next bucket
 
-                        _logger.Info("Sampler", "\n-- Observation #{0} ({1} bucket): {2}", drawn + 1, unit.BucketKey, unit.Describe());
+                        Banner($"OBSERVATION #{drawn + 1} ({unit.BucketKey} bucket): {unit.Describe()}");
 
                         foreach (var candidate in candidates)
                         {
@@ -96,17 +100,18 @@ namespace MetadataHealthCheck.v2.Core.Engine
                                     if (record == null) continue;
                                     evidenceByCandidate[candidate.Id].Add(record);
                                     repository.SaveEvidence(record);
-                                    var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
-                                    _logger.Debug("Sampler", "  [{0}] {1} (weight={2}) {3} :: {4}", candidate.TargetId, record.EvidenceType, weight, unit.BucketKey, record.Rationale);
+                                    LogEvidence(candidate.TargetId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
                                 }
                             }
                         }
                         drawn++;
+                        Banner($"END OBSERVATION #{drawn}");
 
                         decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
                         if (decision.Status != "needs_review")
                         {
                             _logger.Info("Sampler", "{0} resolved after {1} observation(s) in bucket {2}: {3}.", source.DisplayName, drawn, unit.BucketKey, decision.Status);
+                            LogDecisionSummary(source, evidenceByCandidate, decision);
                             return decision;
                         }
                     }
@@ -114,12 +119,63 @@ namespace MetadataHealthCheck.v2.Core.Engine
             }
 
             _logger.Info("Sampler", "{0}: exhausted all bucket budgets without crossing accept/reject thresholds -> needs_review.", source.DisplayName);
+            LogDecisionSummary(source, evidenceByCandidate, decision);
             return decision;
+        }
+
+        // Visual banner around each phase/observation so the eye can find phase
+        // boundaries in a long log without parsing text. Added 2026-07-17 per
+        // direct instruction.
+        private void Banner(string label)
+        {
+            _logger.Info("Sampler", "================================================================");
+            _logger.Info("Sampler", label);
+            _logger.Info("Sampler", "================================================================");
+        }
+
+        // A single evidence line, clearly marked [opportunistic - not scored] when
+        // Contributing is false (2026-07-17 directive: opportunistic evidence is
+        // logged for later "does it add value" analysis, but must never be
+        // mistaken for something that influenced the decision).
+        private void LogEvidence(string candidateId, EvidenceRecord record, ScoringConfig config, string prefix, string indent, string? bucketKey = null)
+        {
+            var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
+            var bucketPart = bucketKey != null ? $" {bucketKey}" : "";
+            if (record.Contributing)
+            {
+                _logger.Debug("Sampler", "{0}[{1}] {2}{3} (weight={4}){5} :: {6}", indent, candidateId, prefix, record.EvidenceType, weight, bucketPart, record.Rationale);
+            }
+            else
+            {
+                _logger.Debug("Sampler", "{0}[{1}] {2}{3} [opportunistic - not scored]{4} :: {5}", indent, candidateId, prefix, record.EvidenceType, bucketPart, record.Rationale);
+            }
+        }
+
+        // Final, unambiguous statement of what actually drove the decision --
+        // contributing evidence only, opportunistic evidence deliberately omitted
+        // here (it's already visible inline, tagged, above). 2026-07-17 directive.
+        private void LogDecisionSummary(TSourceEntity source, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, MatchResult decision)
+        {
+            Banner($"DECISION SUMMARY: {source.DisplayName} -> {decision.Status}");
+            foreach (var kvp in evidenceByCandidate)
+            {
+                var contributing = kvp.Value.Where(e => e.Contributing).ToList();
+                if (contributing.Count == 0) continue;
+                _logger.Info("Sampler", "  Candidate {0}: contributing evidence:", kvp.Key);
+                foreach (var e in contributing)
+                {
+                    _logger.Info("Sampler", "    - {0} :: {1}", e.EvidenceType, e.Rationale);
+                }
+            }
+            Banner("END DECISION SUMMARY");
         }
 
         private MatchResult ScoreAndDecide(TSourceEntity source, List<Candidate> candidates, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, ScoringConfig config)
         {
-            var scored = candidates.Select(c => _scorer.Score(c, evidenceByCandidate[c.Id], config)).ToList();
+            // Contributing=false (opportunistic) evidence is logged and saved for
+            // later "does it add value" analysis but must NEVER affect the actual
+            // decision -- see EvidenceRecord.Contributing, 2026-07-17 directive.
+            var scored = candidates.Select(c => _scorer.Score(c, evidenceByCandidate[c.Id].Where(e => e.Contributing), config)).ToList();
             return _decisionGate.Decide(scored, config, source.SourceSystem, source.SourceId);
         }
     }
