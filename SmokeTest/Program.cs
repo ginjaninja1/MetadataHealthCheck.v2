@@ -160,7 +160,12 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
     }
 
     var scored = repo.Candidates
-        .Select(c => scorer.Score(c, repo.Evidence.Where(e => e.CandidateId == c.Id), config))
+        // BUG FIX 2026-07-17: this was scoring from repo.Evidence unfiltered, silently
+        // re-including Contributing=false (opportunistic) evidence in LLR/confidence
+        // even though SequentialSampler correctly excludes it from the real decision.
+        // Two independent code paths summed evidence differently -- this one must
+        // match the sampler's rule exactly: contributing evidence only.
+        .Select(c => scorer.Score(c, repo.Evidence.Where(e => e.CandidateId == c.Id && e.Contributing), config))
         .OrderByDescending(s => s.RunningLlr)
         .ToList();
 
@@ -170,13 +175,26 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
         var rank = i == 0 ? "1st" : i == 1 ? "2nd" : $"{i + 1}th";
         var name = mbClient.GetArtistDisplayName(s.Candidate.TargetId);
         Console.WriteLine($"  [{rank}] {s.Candidate.TargetId}  \"{name}\"  strategy={s.Candidate.GenerationStrategy}  query={s.Candidate.GenerationQuery}");
-        Console.WriteLine($"        LLR={s.RunningLlr:F2}  confidence={s.Confidence:F3}  evidence={s.EvidenceSoFar.Count} record(s)");
+        Console.WriteLine($"        LLR={s.RunningLlr:F2}  confidence={s.Confidence:F3}  evidence={s.EvidenceSoFar.Count} contributing record(s)");
 
         var byType = s.EvidenceSoFar.GroupBy(e => e.EvidenceType).OrderByDescending(g => g.Count());
         foreach (var g in byType)
         {
             var llr = config.EvidenceWeights.TryGetValue(g.Key, out var w) ? w.ToString("F2") : "n/a";
             Console.WriteLine($"          {g.Key} x{g.Count()}  (weight={llr})");
+        }
+
+        // Opportunistic evidence for this candidate, shown separately and clearly
+        // marked so it can never be mistaken for something that affected LLR/confidence
+        // above -- it deliberately did not. See EvidenceRecord.Contributing.
+        var opportunistic = repo.Evidence.Where(e => e.CandidateId == s.Candidate.Id && !e.Contributing).ToList();
+        if (opportunistic.Count > 0)
+        {
+            Console.WriteLine("        -- opportunistic evidence (not scored, informational only) --");
+            foreach (var g in opportunistic.GroupBy(e => e.EvidenceType).OrderByDescending(g => g.Count()))
+            {
+                Console.WriteLine($"          [opportunistic] {g.Key} x{g.Count()}");
+            }
         }
     }
 }

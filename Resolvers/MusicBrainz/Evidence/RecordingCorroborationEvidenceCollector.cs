@@ -56,11 +56,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         private readonly IMusicBrainzApiClient _client;
         private readonly RecordingLookup _recordingLookup;
+        private readonly MetadataHealthCheck.v2.Diagnostics.StructuredLogger? _logger;
 
-        public RecordingCorroborationEvidenceCollector(IMusicBrainzApiClient client, RecordingLookup recordingLookup)
+        public RecordingCorroborationEvidenceCollector(IMusicBrainzApiClient client, RecordingLookup recordingLookup, MetadataHealthCheck.v2.Diagnostics.StructuredLogger? logger = null)
         {
             _client = client;
             _recordingLookup = recordingLookup;
+            _logger = logger;
         }
 
         // Reports several EvidenceType values (CorroborationTier.*, WorkRelationship.*,
@@ -109,9 +111,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             };
 
             // --- Relationship evidence (§5.4/§7.2 C5), same recording, one call ---
+            // Bracketed here, at the source, because it's the raw API call/dump that
+            // was the actual noise inside the observation block -- tagging only the
+            // resulting EvidenceRecord afterward (in SequentialSampler) wasn't enough;
+            // this call and its console output needed marking too. 2026-07-17.
+            _logger?.Debug("MbApi", "---- opportunistic lookup below: relationship scan (not required for the decision) ----");
             var rels = _client.GetRelationships(rec.RecordingId)
                 .Where(r => r.ArtistMbid == candidate.TargetId)
                 .ToList();
+            _logger?.Debug("MbApi", "---- end opportunistic lookup: relationship scan ----");
 
             var workRel = rels.FirstOrDefault(r => r.Level == RelationshipLevel.Work && WorkLevelTypes.Contains(r.RelationshipType));
             if (workRel != null)

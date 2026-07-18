@@ -93,6 +93,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
                         foreach (var candidate in candidates)
                         {
+                            var candidateRecords = new List<EvidenceRecord>();
                             foreach (var collector in _observationCollectors)
                             {
                                 foreach (var record in collector.Collect(source, candidate, unit, context))
@@ -100,8 +101,26 @@ namespace MetadataHealthCheck.v2.Core.Engine
                                     if (record == null) continue;
                                     evidenceByCandidate[candidate.Id].Add(record);
                                     repository.SaveEvidence(record);
+                                    candidateRecords.Add(record);
+                                }
+                            }
+                            if (candidateRecords.Count == 0) continue;
+
+                            var contributing = candidateRecords.Where(r => r.Contributing).ToList();
+                            var opportunistic = candidateRecords.Where(r => !r.Contributing).ToList();
+
+                            foreach (var record in contributing)
+                            {
+                                LogEvidence(candidate.TargetId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                            }
+                            if (opportunistic.Count > 0)
+                            {
+                                _logger.Debug("Sampler", "  [{0}] ---- opportunistic evidence below (not scored, informational only) ----", candidate.TargetId);
+                                foreach (var record in opportunistic)
+                                {
                                     LogEvidence(candidate.TargetId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
                                 }
+                                _logger.Debug("Sampler", "  [{0}] ---- end opportunistic evidence ----", candidate.TargetId);
                             }
                         }
                         drawn++;

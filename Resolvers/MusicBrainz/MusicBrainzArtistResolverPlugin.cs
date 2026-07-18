@@ -79,7 +79,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
                 // doc comment for why (three collectors were each independently deciding
                 // how to call the shared RecordingLookup, causing real cache-collision
                 // bugs). The three old files remain in the repo, unwired, not deleted.
-                new RecordingCorroborationEvidenceCollector(client, recordingLookup),
+                new RecordingCorroborationEvidenceCollector(client, recordingLookup, logger),
                 // NOT built: AliasEvidenceCollector.cs, which §11.2's file tree still
                 // lists as planned. Left out deliberately, not just not-yet-started —
                 // §6.1/§5.3's own retirement notes say alias-match is no longer a
