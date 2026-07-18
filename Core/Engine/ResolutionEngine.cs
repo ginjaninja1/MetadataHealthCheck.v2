@@ -66,7 +66,13 @@ namespace MetadataHealthCheck.v2.Core.Engine
             if (decision.Status == "auto_accept")
                 _identityCache.Set(artist.SourceSystem, artist.SourceId, decision.TargetSystem, decision.TargetId, decision.Confidence);
 
-            _logger.Info("Engine", "{0} -> {1} [{2}], confidence={3:F2}", artist.DisplayName, decision.TargetId, decision.Status, decision.Confidence);
+            // Removed 2026-07-17: this used to log the decision (status/confidence)
+            // here unconditionally. StructuredLogger has no level filtering, so
+            // downgrading to Debug didn't actually suppress it -- it kept appearing,
+            // ahead of SmokeTest/Program.cs's own dedicated "STAGE: decision" ->
+            // PrintDecision step, leaking the outcome before the evidence-summary
+            // stage that's meant to come first. Removed rather than relabeled, since
+            // PrintDecision already reports exactly this information at the right point.
             return decision;
         }
     }

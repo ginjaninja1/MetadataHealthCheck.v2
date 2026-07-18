@@ -7,6 +7,17 @@ using MetadataHealthCheck.v2.Sources.Emby;
 namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
 {
     /// <summary>
+    /// RENAMED 2026-07-17 from SoftBucketStrategy -> ArtistStrategy: this is the only
+    /// artist candidate-generation strategy actually wired into the pipeline (Strategy
+    /// A/AnchoredRecordingStrategy is parked; Strategy C never built) -- "SoftBucket"
+    /// was an internal implementation label, not a meaningful name once there's only
+    /// one strategy in play. See Project Log / conversation 2026-07-17 for the
+    /// distinction settled here: THIS interface (ICandidateGenerationStrategy) is
+    /// specifically about admitting candidates (sub-selection), separate from any
+    /// future strategy about HOW evidence is mined/collected once a candidate already
+    /// exists (e.g. deeper relationship-rung lookups for composer signal) -- that
+    /// would be a different, not-yet-designed extensibility point.
+    ///
     /// Strategy B (§5.3): used when no own anchor (Strategy A) and, in later
     /// phases, no borrowed anchor (Strategy C) is available.
     ///
@@ -51,7 +62,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
     /// wanted; this is the evidence-accumulation system working as designed, not a
     /// gap left by removing Phase 2.
     /// </summary>
-    public class SoftBucketStrategy : ICandidateGenerationStrategy<EmbyArtist>
+    public class ArtistStrategy : ICandidateGenerationStrategy<EmbyArtist>
     {
         private readonly IMusicBrainzApiClient _client;
         private readonly ScoringConfig _config;
@@ -60,14 +71,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
         // logger is optional (nullable), 2026-07-16 -- added after this class was
         // first built; existing/future callers that don't have a logger handy
         // shouldn't be forced to supply one just to keep compiling.
-        public SoftBucketStrategy(IMusicBrainzApiClient client, ScoringConfig config, MetadataHealthCheck.v2.Diagnostics.StructuredLogger? logger = null)
+        public ArtistStrategy(IMusicBrainzApiClient client, ScoringConfig config, MetadataHealthCheck.v2.Diagnostics.StructuredLogger? logger = null)
         {
             _client = client;
             _config = config;
             _logger = logger;
         }
 
-        public string StrategyName => "B";
+        public string StrategyName => "ArtistStrategy";
         public int Priority => 30; // tried after A (and, later, C) — §5.3
 
         public IEnumerable<Candidate> GenerateCandidates(EmbyArtist source, ResolutionContext context)

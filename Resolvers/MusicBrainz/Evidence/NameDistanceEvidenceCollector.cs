@@ -41,6 +41,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 EvidenceType = bucket,
                 RawValue = $"source=\"{source.DisplayName}\" candidate=\"{candidateName}\" similarity={distance:F2}",
                 Role = null, // static evidence, not tied to a specific track/role
+                // Contributing=false (2026-07-17 settled directive): only CorroborationTier
+                // evidence, produced solely inside RecordingCorroborationEvidenceCollector
+                // from a confirmed recording, is allowed to affect auto_accept/needs_review/
+                // reject. NameSimilarity is still computed and logged (name match is what
+                // SoftBucketStrategy's admission gate already used to decide whether this
+                // candidate exists at all) but must not also silently add to the score on
+                // top of that. Revisit only as a deliberate decision, not a default.
+                Contributing = false,
                 Rationale = $"MusicBrainz artist name \"{candidateName}\" compared to Emby's \"{source.DisplayName}\" ({DescribeBucket(bucket)}).",
             };
         }

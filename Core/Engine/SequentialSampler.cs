@@ -56,13 +56,32 @@ namespace MetadataHealthCheck.v2.Core.Engine
             Banner("STATIC EVIDENCE");
             foreach (var candidate in candidates)
             {
+                var candidateRecords = new List<EvidenceRecord>();
                 foreach (var collector in _staticCollectors)
                 {
                     var record = collector.Collect(source, candidate, context);
                     if (record == null) continue;
                     evidenceByCandidate[candidate.Id].Add(record);
                     repository.SaveEvidence(record);
+                    candidateRecords.Add(record);
+                }
+                if (candidateRecords.Count == 0) continue;
+
+                var contributing = candidateRecords.Where(r => r.Contributing).ToList();
+                var opportunistic = candidateRecords.Where(r => !r.Contributing).ToList();
+
+                foreach (var record in contributing)
+                {
                     LogEvidence(candidate.TargetId, record, config, prefix: "static ", indent: "");
+                }
+                if (opportunistic.Count > 0)
+                {
+                    _logger.Debug("Sampler", "[{0}] ---- opportunistic evidence below (not scored, informational only) ----", candidate.TargetId);
+                    foreach (var record in opportunistic)
+                    {
+                        LogEvidence(candidate.TargetId, record, config, prefix: "static ", indent: "");
+                    }
+                    _logger.Debug("Sampler", "[{0}] ---- end opportunistic evidence ----", candidate.TargetId);
                 }
             }
             Banner("END STATIC EVIDENCE");
@@ -71,7 +90,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
             if (decision.Status != "needs_review")
             {
                 _logger.Debug("Sampler", "Resolved from static evidence alone for {0}; no track-level sampling needed.", source.DisplayName);
-                LogDecisionSummary(source, evidenceByCandidate, decision);
                 return decision;
             }
 
@@ -129,16 +147,21 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
                         if (decision.Status != "needs_review")
                         {
-                            _logger.Info("Sampler", "{0} resolved after {1} observation(s) in bucket {2}: {3}.", source.DisplayName, drawn, unit.BucketKey, decision.Status);
-                            LogDecisionSummary(source, evidenceByCandidate, decision);
+                            // Deliberately doesn't state decision.Status/Confidence here
+                            // (2026-07-17) -- StructuredLogger has no level filtering, so
+                            // "Debug" doesn't actually suppress a line, it only relabels
+                            // it. The real fix is not stating the outcome at all until
+                            // SmokeTest/Program.cs's own dedicated "STAGE: decision" ->
+                            // PrintDecision step. This line only reports the mechanical
+                            // fact of when/why sampling stopped.
+                            _logger.Debug("Sampler", "{0}: stopped sampling after {1} observation(s) in bucket {2} (a decision threshold was crossed).", source.DisplayName, drawn, unit.BucketKey);
                             return decision;
                         }
                     }
                 }
             }
 
-            _logger.Info("Sampler", "{0}: exhausted all bucket budgets without crossing accept/reject thresholds -> needs_review.", source.DisplayName);
-            LogDecisionSummary(source, evidenceByCandidate, decision);
+            _logger.Debug("Sampler", "{0}: exhausted all bucket budgets without crossing any accept/reject threshold.", source.DisplayName);
             return decision;
         }
 
@@ -173,21 +196,13 @@ namespace MetadataHealthCheck.v2.Core.Engine
         // Final, unambiguous statement of what actually drove the decision --
         // contributing evidence only, opportunistic evidence deliberately omitted
         // here (it's already visible inline, tagged, above). 2026-07-17 directive.
-        private void LogDecisionSummary(TSourceEntity source, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, MatchResult decision)
-        {
-            Banner($"DECISION SUMMARY: {source.DisplayName} -> {decision.Status}");
-            foreach (var kvp in evidenceByCandidate)
-            {
-                var contributing = kvp.Value.Where(e => e.Contributing).ToList();
-                if (contributing.Count == 0) continue;
-                _logger.Info("Sampler", "  Candidate {0}: contributing evidence:", kvp.Key);
-                foreach (var e in contributing)
-                {
-                    _logger.Info("Sampler", "    - {0} :: {1}", e.EvidenceType, e.Rationale);
-                }
-            }
-            Banner("END DECISION SUMMARY");
-        }
+        // NOTE 2026-07-17: an internal LogDecisionSummary used to fire here, inline,
+        // the moment Resolve() finished. Removed -- it duplicated and, worse,
+        // pre-empted SmokeTest/Program.cs's own "STAGE: artist evidence summary" ->
+        // "STAGE: decision" sequence, making the decision appear to print BEFORE the
+        // evidence summary in the smoke test output. The decision-after-evidence
+        // summary now lives solely in SmokeTest/Program.cs (PrintScoreboard then
+        // PrintDecision), which already had the ordering right.
 
         private MatchResult ScoreAndDecide(TSourceEntity source, List<Candidate> candidates, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, ScoringConfig config)
         {

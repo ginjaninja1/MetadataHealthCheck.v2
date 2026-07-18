@@ -174,7 +174,7 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
         var s = scored[i];
         var rank = i == 0 ? "1st" : i == 1 ? "2nd" : $"{i + 1}th";
         var name = mbClient.GetArtistDisplayName(s.Candidate.TargetId);
-        Console.WriteLine($"  [{rank}] {s.Candidate.TargetId}  \"{name}\"  strategy={s.Candidate.GenerationStrategy}  query={s.Candidate.GenerationQuery}");
+        Console.WriteLine($"  [{rank}] {s.Candidate.TargetId}  \"{name}\"  query={s.Candidate.GenerationQuery}");
         Console.WriteLine($"        LLR={s.RunningLlr:F2}  confidence={s.Confidence:F3}  evidence={s.EvidenceSoFar.Count} contributing record(s)");
 
         var byType = s.EvidenceSoFar.GroupBy(e => e.EvidenceType).OrderByDescending(g => g.Count());

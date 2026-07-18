@@ -49,6 +49,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 Role = track.Role,
                 SourceTrackId = track.TrackId,
                 AlbumId = track.AlbumId,
+                // Contributing=false (2026-07-17 settled directive): only CorroborationTier
+                // evidence (RecordingCorroborationEvidenceCollector) is allowed to affect
+                // the decision right now. Still logged/computed since it's cheap (file tags
+                // already on the track, no API call) and may prove useful once composer/
+                // anchor-strategy work resumes -- just not scoring today.
+                Contributing = false,
                 Rationale = $"Emby's own file tags on \"{track.TrackName}\" already assert MusicBrainz artist id {taggedMbid} for this candidate (Tier 0).",
             };
         }

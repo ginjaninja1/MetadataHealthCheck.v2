@@ -30,7 +30,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         // small next-session cleanup, not fixed in this pass.
         //
         // logger ADDED 2026-07-16 (Nick's explicit request): candidate generation
-        // (SoftBucketStrategy's admit/drop decisions) and RecordingLookup's entire
+        // (ArtistStrategy's admit/drop decisions) and RecordingLookup's entire
         // confirmation ladder were completely invisible before this -- this constructor
         // had no way to give them one. Optional (nullable) so any other caller that
         // doesn't have a logger handy isn't forced to break. Composition root callers
@@ -40,10 +40,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
             // Shared across every per-observation collector that needs to confirm a
             // candidate against a specific track (§7.2 C3/C4): WorkRelationshipEvidenceCollector,
             // RecordingRelationshipEvidenceCollector, CorroborationTierEvidenceCollector below.
-            // NOT used by SoftBucketStrategy any more (2026-07-16) -- candidate generation used
+            // NOT used by ArtistStrategy any more (2026-07-16) -- candidate generation used
             // to also do its own separate recording-lookup confirmation pass here ("Phase 2"),
             // bypassing the Track Observation Feeder entirely; removed as architecturally wrong
-            // (see SoftBucketStrategy.cs's own doc comment). Recording lookups now happen
+            // (see ArtistStrategy.cs's own doc comment). Recording lookups now happen
             // exclusively inside the Engine's Feeder-ordered per-observation loop, via these
             // collectors -- one shared instance, so its per-(candidate,track) memoization still
             // pays off across every collector that touches it within one resolution run.
@@ -51,10 +51,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
 
             Strategies = new ICandidateGenerationStrategy<EmbyArtist>[]
             {
-                new SoftBucketStrategy(client, scoringConfig, logger), // artist-search-first generation, spec §5.1 -- name/alias filtering only, no recording lookups; confirmation happens entirely inside the Engine's per-observation loop now (2026-07-16)
+                new ArtistStrategy(client, scoringConfig, logger), // artist-search-first generation, spec §5.1 -- name/alias filtering only, no recording lookups; confirmation happens entirely inside the Engine's per-observation loop now (2026-07-16)
                 // AnchoredRecordingStrategy.cs is retained in the repo but deliberately not
                 // registered here. Anchoring is a parked concept (spec §5.1/§10.1) — wiring
-                // it in alongside SoftBucketStrategy risked duplicate candidates with split
+                // it in alongside ArtistStrategy risked duplicate candidates with split
                 // evidence pools across two generation paths. Do not re-add without an
                 // explicit decision to un-park anchoring.
             };
