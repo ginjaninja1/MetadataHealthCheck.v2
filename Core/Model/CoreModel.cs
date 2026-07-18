@@ -42,6 +42,12 @@ namespace MetadataHealthCheck.v2.Core.Model
         public string GenerationStrategy { get; set; } = "";    // "A" | "B" | "C"
         public string GenerationQuery { get; set; } = "";       // literal query string, for logging
         public DateTime CreatedAt { get; set; }
+        // Added 2026-07-18: MBIDs of artists this candidate "performs as" / "is person"
+        // relations point to (e.g. a stage name's real-person MBID, or vice versa),
+        // sourced from the artist stage's artist-rels lookup. Empty until the artist
+        // candidate generator is updated to populate it -- until then this is inert and
+        // every existing identity check (TargetId only) behaves exactly as before.
+        public IReadOnlyList<string> RelationshipMbids { get; set; } = Array.Empty<string>();
     }
 
     public class EvidenceRecord
@@ -59,6 +65,14 @@ namespace MetadataHealthCheck.v2.Core.Model
         // CorroborationTierEvidenceCollector; the actual NameMatchWeight/AliasMatchWeight
         // multiplier this drives is applied by the scorer, not baked in here (§5.3/§6.3).
         public bool MatchedViaAlias { get; set; }
+        // Added 2026-07-18, same rationale as MatchedViaAlias: whether a relationship
+        // hit (WorkRelationship.*/RecordingRelationship.*) matched via one of the
+        // candidate's RelationshipMbids (a performs-as/is-person identity) rather than
+        // the candidate's own TargetId. Raw fact only -- no scoring weight attached yet;
+        // kept distinct from MatchedViaAlias because the two are different confirmation
+        // mechanisms (registered alias text vs. a separate artist-relationship MBID) and
+        // may one day want different weights, logging, or review treatment.
+        public bool MatchedViaRelationship { get; set; }
         // Added 2026-07-17 alongside the "opportunistic evidence" directive: relationship
         // evidence (WorkRelationship.*/RecordingRelationship.*) is pulled from the same
         // recording lookup as Corroboration Tier "because we're already there", purely so

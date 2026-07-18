@@ -116,8 +116,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             // resulting EvidenceRecord afterward (in SequentialSampler) wasn't enough;
             // this call and its console output needed marking too. 2026-07-17.
             _logger?.Debug("MbApi", "---- opportunistic lookup below: relationship scan (not required for the decision) ----");
+            // Widened 2026-07-18: identity check now matches EITHER the candidate's own
+            // MBID OR one of its RelationshipMbids (performs-as/is-person identities from
+            // the artist stage). RelationshipMbids is empty until the artist candidate
+            // generator populates it, so this is a no-op change until then. Still purely
+            // opportunistic -- see Contributing notes below, unchanged.
             var rels = _client.GetRelationships(rec.RecordingId)
-                .Where(r => r.ArtistMbid == candidate.TargetId)
+                .Where(r => r.ArtistMbid == candidate.TargetId || candidate.RelationshipMbids.Contains(r.ArtistMbid))
                 .ToList();
             _logger?.Debug("MbApi", "---- end opportunistic lookup: relationship scan ----");
 
@@ -131,6 +136,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     "lyricist" => "WorkRelationship.Lyricist",
                     _ => "WorkRelationship.Other",
                 };
+                // Per-record truth (2026-07-18), not per-lookup: this specific relation
+                // entry is what determines the flag, so a work-level and recording-level
+                // hit on the same recording can be confirmed via different identities
+                // (e.g. one via TargetId, one via a performs-as MBID) without blurring
+                // together into one collector-wide value.
+                bool workViaRelationship = workRel.ArtistMbid != candidate.TargetId;
 
                 yield return new EvidenceRecord
                 {
@@ -141,11 +152,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     SourceTrackId = track.TrackId,
                     AlbumId = track.AlbumId,
                     RelationshipType = workRel.RelationshipType,
+                    MatchedViaRelationship = workViaRelationship,
                     // Opportunistic (2026-07-17): found because we already had this
                     // recording confirmed, not because the decision needs it. Does not
                     // affect score/auto_accept -- see EvidenceRecord.Contributing.
                     Contributing = false,
-                    Rationale = $"MusicBrainz credits this artist as {workRel.RelationshipType} on \"{track.TrackName}\".",
+                    Rationale = workViaRelationship
+                        ? $"MusicBrainz credits a related artist identity as {workRel.RelationshipType} on \"{track.TrackName}\"."
+                        : $"MusicBrainz credits this artist as {workRel.RelationshipType} on \"{track.TrackName}\".",
                 };
             }
 
@@ -158,6 +172,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     "arranger" => "RecordingRelationship.Arranger",
                     _ => "RecordingRelationship.Other",
                 };
+                bool recordingViaRelationship = recordingRel.ArtistMbid != candidate.TargetId;
 
                 yield return new EvidenceRecord
                 {
@@ -169,9 +184,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     AlbumId = track.AlbumId,
                     RelationshipType = recordingRel.RelationshipType,
                     MatchedViaAlias = lookup.MatchedViaAlias,
+                    MatchedViaRelationship = recordingViaRelationship,
                     // Opportunistic (2026-07-17): see WorkRelationship note above.
                     Contributing = false,
-                    Rationale = $"MusicBrainz credits this artist as {recordingRel.RelationshipType} on \"{track.TrackName}\".",
+                    Rationale = recordingViaRelationship
+                        ? $"MusicBrainz credits a related artist identity as {recordingRel.RelationshipType} on \"{track.TrackName}\"."
+                        : $"MusicBrainz credits this artist as {recordingRel.RelationshipType} on \"{track.TrackName}\".",
                 };
             }
         }

@@ -23,7 +23,11 @@ namespace MetadataHealthCheck.v2.Core.Model
         // from edit-distance below (§5.3). Default 0 -- inert until real resolution
         // volume exists to calibrate against (spec explicitly asserts no default is
         // known to be correct yet); the gate logic itself is real, not stubbed.
-        public int ArtistCandidateMinScore { get; set; } = 0;
+        // 2026-07-18: default changed from 0 to 67 per Nick's confirmed preferred
+        // threshold for the (artist:"NAME" OR alias:"NAME") query -- MB's alias hits
+        // score inherently lower than direct name hits, and 67 is where genuine
+        // matches were observed to separate from noise.
+        public int ArtistCandidateMinScore { get; set; } = 67;
 
         // Stage 1's actual admission mechanism (§5.3): raw Levenshtein edit distance
         // (not a normalized 0-1 ratio) between normalized source name and normalized
@@ -47,6 +51,19 @@ namespace MetadataHealthCheck.v2.Core.Model
             new NameNormalizationRule { Pattern = @"'", Replacement = "" },
             new NameNormalizationRule { Pattern = @"\s+(feat\.?|featuring|vs\.?|with)\s+.*$", Replacement = "" },
             new NameNormalizationRule { Pattern = @"[^\w\s]", Replacement = "" },
+        };
+
+        // Added 2026-07-18: which MusicBrainz artist-relationship type-ids count as
+        // "this is really the same identity" for RelationshipMbids purposes. Seeded
+        // with only "is person" (dd9886f2-1dfe-4270-97db-283f6839a666), confirmed via
+        // a real two-artist round trip (Del Serino <-> Cirino Colacrai) to be
+        // direction-agnostic. Configurable list per Nick's direction -- other MB
+        // relationship types (e.g. "member of band") must NOT be added here without a
+        // deliberate decision, since they mean something structurally different
+        // (a person belongs to a group, not "is the same identity as").
+        public List<string> ValidArtistRelationshipTypeIds { get; set; } = new()
+        {
+            "dd9886f2-1dfe-4270-97db-283f6839a666", // "is person"
         };
     }
 

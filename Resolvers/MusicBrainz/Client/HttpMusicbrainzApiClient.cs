@@ -57,6 +57,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // caller shares, rather than in either collector.
         private readonly Dictionary<string, IReadOnlyList<MbRelationship>> _knownRelationships = new();
 
+        // Added 2026-07-18, same caching rationale as _knownRelationships above, for
+        // the new artist-scoped GetArtistRelationships call.
+        private readonly Dictionary<string, IReadOnlyList<MbArtistRelationship>> _knownArtistRelationships = new();
+
         // Added 2026-07-16 (Nick's explicit request): the tester needs to show API
         // LOAD, not just accuracy -- how many live MBZ calls a resolution actually
         // costs, broken down by call type, including calls hidden inside
@@ -76,7 +80,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         public IReadOnlyList<MbArtistResult> SearchArtist(string name)
         {
-            var query = $"artist:\"{EscapeLucene(name)}\"";
+            // Rewritten 2026-07-18 per Nick's direction: explicit alias search, not
+            // just relying on inline aliases carried on name-matched results. Alias
+            // hits score inherently lower in MB's own relevance ranking than a direct
+            // name hit -- ArtistStrategy uses that score, plus which field
+            // (name-vs-alias) actually matched, to decide sort tier.
+            var escaped = EscapeLucene(name);
+            var query = $"(artist:\"{escaped}\" OR alias:\"{escaped}\")";
             var url = $"artist?query={Uri.EscapeDataString(query)}&fmt=json&limit=25";
             var body = Get(url, "SearchArtist", $"name=\"{name}\"");
             var parsed = body == null ? null : DeserializeJson<ArtistSearchResponseDto>(body);
@@ -305,6 +315,49 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             return aliases;
         }
 
+        // ---- artist-rels: artist-to-artist relationships ("is person", etc.) -----
+        // Added 2026-07-18. Distinct from GetRelationships (C5) above, which is scoped
+        // to a recordingId; this is scoped to an artistMbid. Direction is deliberately
+        // not surfaced on MbArtistRelationship -- confirmed direction-agnostic via a
+        // real two-artist round trip (see MbArtistRelationship's doc comment).
+
+        public IReadOnlyList<MbArtistRelationship> GetArtistRelationships(string artistMbid)
+        {
+            if (_knownArtistRelationships.TryGetValue(artistMbid, out var cached))
+            {
+                _logger.Debug("MbApi", "[GetArtistRelationships] artistMbid={0} -- cached from an earlier call, no live call needed. {1} relation(s).", artistMbid, cached.Count);
+                return cached;
+            }
+
+            var url = $"artist/{artistMbid}?inc=artist-rels&fmt=json";
+            var body = Get(url, "GetArtistRelationships", $"artistMbid={artistMbid}");
+            var parsed = body == null ? null : DeserializeJson<ArtistRelationsDto>(body);
+
+            var results = new List<MbArtistRelationship>();
+            if (parsed?.Relations != null)
+            {
+                foreach (var rel in parsed.Relations)
+                {
+                    if (rel.TargetType == "artist" && rel.Artist?.Id != null)
+                    {
+                        results.Add(new MbArtistRelationship
+                        {
+                            ArtistMbid = rel.Artist.Id,
+                            ArtistName = rel.Artist.Name ?? "",
+                            RelationshipType = rel.Type ?? "",
+                            RelationshipTypeId = rel.TypeId ?? "",
+                        });
+                    }
+                }
+            }
+
+            _logger.Debug("MbApi", "  -> {0} artist relation(s):", results.Count);
+            foreach (var r in results)
+                _logger.Debug("MbApi", "       type=\"{0}\" ({1}) -> \"{2}\" [{3}]", r.RelationshipType, r.RelationshipTypeId, r.ArtistName, r.ArtistMbid);
+            _knownArtistRelationships[artistMbid] = results;
+            return results;
+        }
+
         // ---- shared plumbing ---------------------------------------------------
 
         private string? Get(string relativeUrl, string callName, string callDescription)
@@ -447,6 +500,30 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         {
             [DataMember(Name = "id")] public string? Id { get; set; }
             [DataMember(Name = "relations")] public List<RelationDto>? Relations { get; set; }
+        }
+
+        // ---- artist-rels DTOs (2026-07-18) -------------------------------------
+        // Separate from RecordingRelationshipsDto/RelationDto above: those model a
+        // recording's relations block; this models an ARTIST's, which carries
+        // "type-id" (a stable GUID) alongside "type" (the human-readable name) --
+        // confirmed against a real artist/{mbid}?inc=artist-rels response earlier
+        // this conversation. RelationDto (recording-scoped) doesn't carry type-id
+        // today because nothing needed it there yet; kept as two separate DTOs
+        // rather than widening RelationDto, to avoid touching the already-working
+        // recording-relationship parsing path for an unrelated call.
+        [DataContract]
+        private class ArtistRelationsDto
+        {
+            [DataMember(Name = "relations")] public List<ArtistRelationDto>? Relations { get; set; }
+        }
+
+        [DataContract]
+        private class ArtistRelationDto
+        {
+            [DataMember(Name = "type")] public string? Type { get; set; }
+            [DataMember(Name = "type-id")] public string? TypeId { get; set; }
+            [DataMember(Name = "target-type")] public string? TargetType { get; set; }
+            [DataMember(Name = "artist")] public ArtistRefDto? Artist { get; set; }
         }
     }
 }

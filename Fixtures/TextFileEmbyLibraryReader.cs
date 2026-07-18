@@ -9,11 +9,13 @@ namespace MetadataHealthCheck.v2.Fixtures
     /// for the whole Emby side of the fixtures (SmokeTest/Program.cs had the same
     /// problem, worse, mixed with assertions -- see that file's own rewrite).
     ///
-    /// This reads a plain-text observation file instead. The MusicBrainz side
-    /// (FixtureMusicBrainzApiClient.cs) is untouched and remains the model this
-    /// followed: real data, kept as data, separate from the client abstraction it
-    /// backs. The engine, the MusicBrainz client, and the sample data are now three
-    /// separate things on both sides, not two.
+    /// This reads a plain-text observation file instead. The MusicBrainz side has
+    /// since moved further in the same direction: HttpMusicBrainzApiClient hits the
+    /// live API directly rather than reading from any fixture at all (the old
+    /// FixtureMusicBrainzApiClient.cs was removed 2026-07-18 as dead code from before
+    /// real-data testing existed). The underlying principle is unchanged either way:
+    /// the engine, the MusicBrainz client, and the sample/observed data are three
+    /// separate things, not two, and none of it is welded into code as C# literals.
     ///
     /// FILE FORMAT (track-first, per settled design discussion):
     ///

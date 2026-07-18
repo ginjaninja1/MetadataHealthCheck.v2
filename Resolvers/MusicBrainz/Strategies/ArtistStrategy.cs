@@ -9,61 +9,59 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
     /// <summary>
     /// RENAMED 2026-07-17 from SoftBucketStrategy -> ArtistStrategy: this is the only
     /// artist candidate-generation strategy actually wired into the pipeline (Strategy
-    /// A/AnchoredRecordingStrategy is parked; Strategy C never built) -- "SoftBucket"
-    /// was an internal implementation label, not a meaningful name once there's only
-    /// one strategy in play. See Project Log / conversation 2026-07-17 for the
-    /// distinction settled here: THIS interface (ICandidateGenerationStrategy) is
-    /// specifically about admitting candidates (sub-selection), separate from any
-    /// future strategy about HOW evidence is mined/collected once a candidate already
-    /// exists (e.g. deeper relationship-rung lookups for composer signal) -- that
-    /// would be a different, not-yet-designed extensibility point.
+    /// A/AnchoredRecordingStrategy is parked; Strategy C never built).
+    ///
+    /// REWRITTEN 2026-07-18 per direct instruction, replacing the edit-distance
+    /// admission gate:
+    ///
+    ///   1. SearchArtist(source.DisplayName) now queries MusicBrainz with
+    ///      (artist:"NAME" OR alias:"NAME") (see HttpMusicBrainzApiClient) -- alias
+    ///      hits are found by MB's own search, not just carried inline on
+    ///      name-matched results.
+    ///   2. Admission gate is MB's own text-relevance Score alone
+    ///      (ScoringConfig.CandidateGeneration.ArtistCandidateMinScore). Per Nick's
+    ///      direction 2026-07-18: "we don't need closeness to achieve [finding the
+    ///      candidate artist id signal]... the cleverness is in finding the candidate
+    ///      artist id signal in the recorded artist id" -- i.e. admitting some extra
+    ///      candidates is fine as long as it doesn't cost extra API lookups, since a
+    ///      wrong candidate simply accumulates no corroborating evidence downstream
+    ///      and gets rejected by the normal decision gate.
+    ///   3. ArtistCandidateMaxEditDistance / IsNameOrAliasWithinEditDistance are NOT
+    ///      removed -- per explicit instruction, the value in this function shouldn't
+    ///      be lost in case it's wanted again later. It's repurposed here from an
+    ///      admission gate into a SORT TIER classifier (see ClassifyMatchTier below):
+    ///      still pure string comparison, same normalization, same Levenshtein
+    ///      distance -- just informing order, not admit/reject.
+    ///   4. For every admitted candidate, artist-rels are fetched EAGERLY (Nick's
+    ///      confirmed directive: "I think we request artist-rels for all candidates
+    ///      above 67" -- i.e. above the score cutoff, not lazily per sampler-order),
+    ///      filtered to ScoringConfig.CandidateGeneration.ValidArtistRelationshipTypeIds
+    ///      ("is person" only, seeded 2026-07-18), and the other artist's MBID is
+    ///      collected into Candidate.RelationshipMbids.
+    ///   5. Candidates are sorted tier-first (name-match tier before alias-match tier,
+    ///      "neither" tier last), MB Score descending within a tier, before being
+    ///      yielded -- so the sequential sampler's early-stopping sees the most likely
+    ///      candidate first. Sort-order question of "can one candidate's strong alias
+    ///      match ever outrank another's weaker name match" is deliberately NOT
+    ///      answered here (flagged, not decided): tier-first is the safer default
+    ///      pending real resolution volume to test it against.
+    ///
+    /// RESOLVED 2026-07-18: ArtistCandidateMinScore's default is now 67 (Nick's
+    /// confirmed preferred threshold), set in ScoringConfig.cs. The score-only
+    /// admission mechanism below simply uses whatever this is configured to.
     ///
     /// Strategy B (§5.3): used when no own anchor (Strategy A) and, in later
     /// phases, no borrowed anchor (Strategy C) is available.
-    ///
-    /// Artist-search-first, per the settled architectural decision (supersedes the
-    /// old recording-search-first approach, now in the spec's Appendix A):
-    ///
-    ///   1. C1: SearchArtist(source.DisplayName) -- returns candidates plus their
-    ///      inline registered aliases in one call.
-    ///   2. Name/alias filtering (§5.3): a result becomes a real Candidate if (a)
-    ///      MB's own text-relevance Score clears
-    ///      ScoringConfig.CandidateGeneration.ArtistCandidateMinScore, and (b) the
-    ///      normalized source name is within
-    ///      ScoringConfig.CandidateGeneration.ArtistCandidateMaxEditDistance
-    ///      (raw Levenshtein, not a normalized ratio) of either the result's own
-    ///      normalized Name or one of its normalized Aliases. Normalization is
-    ///      ArtistNameNormalizer.cs, driven by
-    ///      ScoringConfig.CandidateGeneration.NameNormalizationRules. Pure string
-    ///      comparison, no API calls, no track/observation data of any kind.
-    ///
-    /// REMOVED 2026-07-16 (Nick's explicit direction, confirmed correct against
-    /// spec): this class used to ALSO do a "Phase 2" recording-lookup confirmation
-    /// pass here, before returning a candidate at all -- looping raw over
-    /// source.Tracks with no ordering discipline, calling RecordingLookup directly.
-    /// That was flat wrong: recording lookups must never happen before the Track
-    /// Observation Feeder (EmbyArtistObservationUnitProvider, §5.3.1) has selected
-    /// and ordered which track to observe -- that's the entire point of the
-    /// Feeder/Engine split settled in Decisions.md, 2026-07-12. Phase 2 bypassed
-    /// the Feeder completely and duplicated, badly, a job the Sequential
-    /// Resolution Engine's own per-observation loop already does correctly:
-    /// CorroborationTierEvidenceCollector (Resolvers/MusicBrainz/Evidence/) calls
-    /// RecordingLookup once per Feeder-ordered observation and produces graded
-    /// (Tier 1/2/3) evidence -- consistent with §5.4's "never pre-baked LLR,
-    /// accumulate and decide via threshold" philosophy, which Phase 2's binary
-    /// admit/reject gate actually violated outright.
-    ///
-    /// Net effect: a name/alias match is now a real Candidate immediately. If
-    /// MusicBrainz happens to have two real, distinct entities with near-identical
-    /// names, both become candidates here -- the one with no genuine matching
-    /// recordings simply accumulates no CorroborationTier evidence once the Engine
-    /// runs and is rejected by the normal decision gate, the same way any other
-    /// unconfirmed candidate is. No separate upfront recording check is needed or
-    /// wanted; this is the evidence-accumulation system working as designed, not a
-    /// gap left by removing Phase 2.
     /// </summary>
     public class ArtistStrategy : ICandidateGenerationStrategy<EmbyArtist>
     {
+        private enum MatchTier
+        {
+            Name = 0,     // normalized source name exactly matches candidate's normalized primary name
+            Alias = 1,    // normalized source name exactly matches one of candidate's normalized aliases
+            Neither = 2,  // admitted on MB score alone; no exact name/alias match found
+        }
+
         private readonly IMusicBrainzApiClient _client;
         private readonly ScoringConfig _config;
         private readonly MetadataHealthCheck.v2.Diagnostics.StructuredLogger? _logger;
@@ -87,15 +85,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
             var cgConfig = _config.CandidateGeneration;
             var normalizedSource = ArtistNameNormalizer.Normalize(source.DisplayName, cgConfig.NameNormalizationRules);
 
-            // Name/alias filtering ONLY. No API calls beyond the SearchArtist call
-            // already made above, no recording lookups, no track/observation data
-            // touched at all -- this is the ENTIRETY of candidate generation now.
-            // Anything recording-shaped happens later, inside the Engine, once the
-            // Feeder has selected and ordered an observation.
-            _logger?.Info("ArtistCandidateGen", "[{0}] Filtering {1} artist search result(s) by name/alias closeness...", source.DisplayName, artistResults.Count);
+            _logger?.Info("ArtistCandidateGen", "[{0}] Filtering {1} artist search result(s) by MB score (>= {2})...", source.DisplayName, artistResults.Count, cgConfig.ArtistCandidateMinScore);
 
+            var admitted = new List<(MbArtistResult Result, MatchTier Tier)>();
             var seen = new HashSet<string>();
-            int admitted = 0;
             foreach (var result in artistResults)
             {
                 if (!seen.Add(result.Mbid))
@@ -110,14 +103,24 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     continue; // MB's own text-relevance score too low to consider, §5.4
                 }
 
-                if (!IsNameOrAliasWithinEditDistance(normalizedSource, result, cgConfig))
-                {
-                    _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} -- DROPPED: name/alias not within ArtistCandidateMaxEditDistance ({3}) of \"{4}\".", result.Mbid, result.Name, result.Score, cgConfig.ArtistCandidateMaxEditDistance, source.DisplayName);
-                    continue; // admission gate, §5.3
-                }
+                var tier = ClassifyMatchTier(normalizedSource, result, cgConfig);
+                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} tier={3} -- ADMITTED as a candidate.", result.Mbid, result.Name, result.Score, tier);
+                admitted.Add((result, tier));
+            }
 
-                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} -- ADMITTED as a candidate.", result.Mbid, result.Name, result.Score);
-                admitted++;
+            // Tier-first, MB score descending within a tier -- so the sampler's
+            // early-stopping sees the most likely candidate first (§ sort-order
+            // directive, 2026-07-18).
+            var ordered = admitted
+                .OrderBy(a => a.Tier)
+                .ThenByDescending(a => a.Result.Score)
+                .ToList();
+
+            _logger?.Info("ArtistCandidateGen", "[{0}] Complete: {1} of {2} search result(s) admitted as candidates.", source.DisplayName, ordered.Count, artistResults.Count);
+
+            foreach (var (result, tier) in ordered)
+            {
+                var relationshipMbids = FetchValidRelationshipMbids(result.Mbid, result.Name, cgConfig);
 
                 yield return new Candidate
                 {
@@ -126,14 +129,68 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     TargetEntityType = "Artist",
                     TargetId = result.Mbid,
                     GenerationStrategy = StrategyName,
-                    GenerationQuery = $"artist:\"{source.DisplayName}\"",
+                    GenerationQuery = $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
                     CreatedAt = DateTime.UtcNow,
+                    RelationshipMbids = relationshipMbids,
                 };
             }
-
-            _logger?.Info("ArtistCandidateGen", "[{0}] Complete: {1} of {2} search result(s) admitted as candidates.", source.DisplayName, admitted, artistResults.Count);
         }
 
+        // Eager fetch, per candidate, for every admitted candidate (Nick's confirmed
+        // directive -- not lazy/sampler-order). Filters to
+        // ValidArtistRelationshipTypeIds ("is person" only, seeded); logs each
+        // relation's admit/drop decision the same way SearchArtist's own admission
+        // gate is logged above.
+        private IReadOnlyList<string> FetchValidRelationshipMbids(string candidateMbid, string candidateName, CandidateGenerationConfig cgConfig)
+        {
+            var relations = _client.GetArtistRelationships(candidateMbid);
+            if (relations.Count == 0)
+                return Array.Empty<string>();
+
+            _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" -- fetching artist-rels...", candidateMbid, candidateName);
+
+            var validIds = new HashSet<string>(cgConfig.ValidArtistRelationshipTypeIds, StringComparer.OrdinalIgnoreCase);
+            var admitted = new List<string>();
+            foreach (var rel in relations)
+            {
+                if (validIds.Contains(rel.RelationshipTypeId))
+                {
+                    _logger?.Info("ArtistCandidateGen", "    relation type=\"{0}\" -> \"{1}\" [{2}] -- ADMITTED as performs-as.", rel.RelationshipType, rel.ArtistName, rel.ArtistMbid);
+                    admitted.Add(rel.ArtistMbid);
+                }
+                else
+                {
+                    _logger?.Info("ArtistCandidateGen", "    relation type=\"{0}\" -> \"{1}\" [{2}] -- DROPPED: not a valid relationship type-id.", rel.RelationshipType, rel.ArtistName, rel.ArtistMbid);
+                }
+            }
+            return admitted;
+        }
+
+        // REPURPOSED 2026-07-18 from an admission gate into a sort-tier classifier
+        // (see class doc comment). Same normalization/Levenshtein machinery as
+        // before -- IsNameOrAliasWithinEditDistance's logic lives on here, just
+        // answering a different question ("which tier" rather than "admit or not").
+        private static MatchTier ClassifyMatchTier(string normalizedSource, MbArtistResult result, CandidateGenerationConfig config)
+        {
+            var normalizedName = ArtistNameNormalizer.Normalize(result.Name, config.NameNormalizationRules);
+            if (NameDistanceEvidenceCollector.Levenshtein(normalizedSource, normalizedName) == 0)
+                return MatchTier.Name;
+
+            foreach (var alias in result.Aliases)
+            {
+                var normalizedAlias = ArtistNameNormalizer.Normalize(alias, config.NameNormalizationRules);
+                if (NameDistanceEvidenceCollector.Levenshtein(normalizedSource, normalizedAlias) == 0)
+                    return MatchTier.Alias;
+            }
+
+            return MatchTier.Neither;
+        }
+
+        // KEPT, NOT REMOVED, per explicit instruction 2026-07-18 ("the value in the
+        // name closeness function wont be lost if we ever want to call upon it
+        // later") -- no longer called anywhere in this class now that admission is
+        // score-only, but preserved here rather than deleted in case closeness-based
+        // admission or tiering is wanted again.
         private static bool IsNameOrAliasWithinEditDistance(string normalizedSource, MbArtistResult result, CandidateGenerationConfig config)
         {
             var normalizedName = ArtistNameNormalizer.Normalize(result.Name, config.NameNormalizationRules);

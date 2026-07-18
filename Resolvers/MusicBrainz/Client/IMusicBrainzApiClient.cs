@@ -56,6 +56,22 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         public RelationshipLevel Level { get; set; }
     }
 
+    // Added 2026-07-18: artist-to-artist relationships (e.g. "is person" linking a
+    // stage name to a real-person identity), from a NEW artist-rels call distinct
+    // from GetRelationships (which is recording-scoped). No Direction field: verified
+    // 2026-07-18 against a real two-artist round trip (Del Serino <-> Cirino
+    // Colacrai) that the same relationship type-id appears from either artist's own
+    // artist-rels fetch, just with "direction" flipped depending on which side was
+    // queried -- so direction carries no extraction-relevant information and callers
+    // should just treat ArtistMbid as "the other artist in this relation", full stop.
+    public class MbArtistRelationship
+    {
+        public string ArtistMbid { get; set; } = "";      // the OTHER artist in the relation
+        public string ArtistName { get; set; } = "";      // for logging only
+        public string RelationshipType { get; set; } = ""; // e.g. "is person"
+        public string RelationshipTypeId { get; set; } = ""; // MB's stable type-id GUID, e.g. "dd9886f2-..."
+    }
+
     /// <summary>
     /// Abstraction over §7.2's call catalog (C1-C6). Live implementation would hit
     /// musicbrainz.org, which is unreachable from this build sandbox (not on the
@@ -89,5 +105,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // on a recording hit, without re-issuing the original SearchArtist(name) call that
         // produced this candidate in the first place.
         IReadOnlyList<string> GetArtistAliases(string artistMbid);
+
+        // Added 2026-07-18: artist-to-artist relationships (e.g. "is person"), used by
+        // the artist candidate generator to populate Candidate.RelationshipMbids so
+        // composer-only/performs-as identities can be found via recording-relationship
+        // evidence later. Distinct from GetRelationships (C5), which is scoped to a
+        // recording, not an artist.
+        IReadOnlyList<MbArtistRelationship> GetArtistRelationships(string artistMbid);
     }
 }

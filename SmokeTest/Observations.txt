@@ -66,10 +66,7 @@ ARTIST "A Fine Frenzy"
 COMPOSER "Gus Black"
 
 # ---------------------------------------------------------------------------
-# Del Serino -- Composer tier. Same real-world shape as Gus Black: composer
-# credit (with Roy Alfred, not modeled here -- add if you want to exercise
-# multi-composer tracks) on Adele's "19" cover of "That's It, I Quit, I'm
-# Moving On".
+# Del Serino -- real name Cirino Colacrai
 # ---------------------------------------------------------------------------
 
 ARTIST emby-artist-del-serino "Del Serino"
