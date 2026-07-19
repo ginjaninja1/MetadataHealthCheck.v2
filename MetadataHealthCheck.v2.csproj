@@ -40,6 +40,9 @@
 		<Compile Remove="SandboxValidation/**/*.cs" />
 		<Compile Remove="SQLitePCLPrettyShim/**/*.cs" />
 	</ItemGroup>
+	<ItemGroup>
+	  <Compile Remove="Resolvers\MusicBrainz\Evidence\RecordingRelationshipEvidenceCollector.cs" />
+	</ItemGroup>
 
 	<ItemGroup>
 		<None Update="V2Specification.md">

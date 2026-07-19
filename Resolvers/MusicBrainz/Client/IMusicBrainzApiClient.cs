@@ -35,6 +35,45 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // name or only a registered alias (MatchedViaAlias, §5.4/§6.3), and whether the
         // match is trustworthy at all (NameDistanceEvidenceCollector.EvaluateRecordingMatch).
         public string ArtistCreditText { get; set; } = "";
+
+        // Added 2026-07-18, per settled directive on recording-lookup disambiguation:
+        // a real 772-recording same-title search sample showed MusicBrainz's own
+        // relevance score giving zero disambiguation power (every result scored 100
+        // in that sample). CORRECTION (same day, later): the score field itself WAS
+        // being silently dropped for recording search all along -- SearchArtist
+        // already parsed it (see MbArtistResult.Score above) but SearchRecording's DTO
+        // never picked up the equivalent field. Now captured below (Score) for
+        // diagnostic visibility, even though the 772-result sample showed it isn't a
+        // reliable disambiguator on its own. Recording-level duration is the primary
+        // signal actually used as a gate -- see LengthMs below -- because it's
+        // available for free from the same response and was directly observed to
+        // discriminate where Score did not. Null when MusicBrainz has no length for
+        // this recording -- per settled directive, missing data is NOT a
+        // disqualification, the gate only excludes on a CONFIRMED mismatch.
+        public int? LengthMs { get; set; }
+
+        // Added 2026-07-18: MusicBrainz's own relevance score for this recording
+        // result. Diagnostic only -- does NOT feed CorroborationTier classification
+        // (that's derived from RecordingLookupRung, i.e. which rung's search actually
+        // produced a confirmed hit) or the duration gate. Kept purely so a human
+        // reviewing borderline cases, or a future data-driven retuning pass, has it
+        // on hand -- per the 772-recording sample, it wasn't observed to discriminate
+        // well by itself, but that was one sample, not a general proof it's useless.
+        public int Score { get; set; }
+
+        // The following three fields are richness signals only (§ directive
+        // 2026-07-18) -- they inform WALK ORDER among gate-survivors (which
+        // recording to spend the first relationship-fetch call scanning), they do
+        // NOT gate or otherwise affect correctness. A live bootleg of the correct
+        // recording is still correct; it's just less likely to have well-populated
+        // relationship data worth scanning first. Deliberately NOT using country or
+        // release age/date here -- considered and rejected as correctness signals,
+        // since either would bias against non-Anglophone or older-catalog entries at
+        // 70k-artist scale with no actual gain in match accuracy.
+        public string? ReleaseStatus { get; set; }              // "Official" | "Promotion" | "Bootleg" | null
+        public string? ReleaseGroupPrimaryType { get; set; }     // "Album" | "EP" | "Single" | null
+        public List<string> ReleaseGroupSecondaryTypes { get; set; } = new();  // e.g. "Live", "Compilation"
+        public int ReleaseCount { get; set; }                     // number of distinct releases this recording appears on
     }
 
     // Relationship level per §7.2 C5: work-level (writer/composer/lyricist/librettist,

@@ -172,28 +172,80 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
     for (int i = 0; i < scored.Count; i++)
     {
         var s = scored[i];
-        var rank = i == 0 ? "1st" : i == 1 ? "2nd" : $"{i + 1}th";
         var name = mbClient.GetArtistDisplayName(s.Candidate.TargetId);
-        Console.WriteLine($"  [{rank}] {s.Candidate.TargetId}  \"{name}\"  query={s.Candidate.GenerationQuery}");
+
+        // REWRITTEN 2026-07-18 (readability pass, per Nick's feedback): previously
+        // this line led with the MBID and the raw MB API query string used to
+        // generate the candidate ("query=(artist:\"X\" OR alias:\"X\")"). That's
+        // generation-time debugging detail, not evidence, and it crowded out the
+        // one thing worth seeing at a glance: the artist's name. "matched via" /
+        // "admitted via" wording was considered and dropped -- there is currently
+        // only one admission pathway (ArtistStrategy's artist-search stage), so a
+        // per-candidate "how was this admitted" line has nothing to distinguish.
+        // What IS useful at the candidate level is the actual identity data the
+        // candidate carries forward into recording-side matching: its own MBID
+        // and any RelationshipMbids (performs-as/is-person links) picked up during
+        // the artist-rels fetch -- these are exactly what Tier1 corroboration
+        // checks recording credits against, so seeing them here lets you verify
+        // by eye whether a later "matched via: relationship MBID" line makes sense.
+        Console.WriteLine($"  #{i + 1}  {name}");
+        Console.WriteLine($"        artist MBID: {s.Candidate.TargetId}");
+        if (s.Candidate.RelationshipMbids.Count > 0)
+        {
+            Console.WriteLine($"        relationship MBIDs: {string.Join(", ", s.Candidate.RelationshipMbids)}");
+        }
         Console.WriteLine($"        LLR={s.RunningLlr:F2}  confidence={s.Confidence:F3}  evidence={s.EvidenceSoFar.Count} contributing record(s)");
 
+        // NOTE ON LLR/confidence SCOPE: these two numbers are per-candidate running
+        // totals (see SimpleWeightedSumScorer.Score), summed only over this
+        // candidate's Contributing=true evidence records. They are not a property
+        // of any single evidence record (a record's own contribution is its
+        // EvidenceType's weight in ScoringConfig.EvidenceWeights, printed per type
+        // below) and not a single global figure across all candidates -- each
+        // candidate ranked here has its own LLR/confidence, independently computed.
+
+        Console.WriteLine("        Scored evidence:");
         var byType = s.EvidenceSoFar.GroupBy(e => e.EvidenceType).OrderByDescending(g => g.Count());
         foreach (var g in byType)
         {
             var llr = config.EvidenceWeights.TryGetValue(g.Key, out var w) ? w.ToString("F2") : "n/a";
-            Console.WriteLine($"          {g.Key} x{g.Count()}  (weight={llr})");
+            Console.WriteLine($"          {g.Key} x{g.Count()}  (weight {llr} each)");
+
+            // "matched via" is a per-evidence-record fact (EvidenceRecord.MatchedViaAlias /
+            // .MatchedViaRelationship), not a per-candidate or per-type one -- different
+            // records of the same evidence type can each have matched on a different
+            // basis (direct artist MBID vs. a registered alias vs. one of the candidate's
+            // RelationshipMbids). Broken out here as a basis-count line under each type
+            // rather than folded into the header, so mixed-basis groups stay legible.
+            // EXTENSIBILITY NOTE: this reads two booleans (MatchedViaAlias,
+            // MatchedViaRelationship) rather than an open set. Fine while there are only
+            // two non-default match bases; if a third one is ever added, promote these to
+            // a single MatchBasis enum on EvidenceRecord rather than adding a third bool.
+            var relationshipHits = g.Count(e => e.MatchedViaRelationship);
+            var aliasHits = g.Count(e => e.MatchedViaAlias && !e.MatchedViaRelationship);
+            var directHits = g.Count() - relationshipHits - aliasHits;
+            var bases = new List<string>();
+            if (directHits > 0) bases.Add($"{directHits} via artist MBID");
+            if (aliasHits > 0) bases.Add($"{aliasHits} via alias");
+            if (relationshipHits > 0) bases.Add($"{relationshipHits} via relationship MBID");
+            if (bases.Count > 0)
+            {
+                Console.WriteLine($"            -- {string.Join(", ", bases)}");
+            }
         }
 
-        // Opportunistic evidence for this candidate, shown separately and clearly
+        // Non-scoring evidence for this candidate, shown separately and clearly
         // marked so it can never be mistaken for something that affected LLR/confidence
         // above -- it deliberately did not. See EvidenceRecord.Contributing.
+        // Relabeled from "opportunistic" to "Logged, non-scoring" (Nick's feedback):
+        // same meaning (Contributing=false), plainer wording.
         var opportunistic = repo.Evidence.Where(e => e.CandidateId == s.Candidate.Id && !e.Contributing).ToList();
         if (opportunistic.Count > 0)
         {
-            Console.WriteLine("        -- opportunistic evidence (not scored, informational only) --");
+            Console.WriteLine("        Logged, non-scoring:");
             foreach (var g in opportunistic.GroupBy(e => e.EvidenceType).OrderByDescending(g => g.Count()))
             {
-                Console.WriteLine($"          [opportunistic] {g.Key} x{g.Count()}");
+                Console.WriteLine($"          {g.Key} x{g.Count()}");
             }
         }
     }

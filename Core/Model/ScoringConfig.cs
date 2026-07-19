@@ -90,6 +90,27 @@ namespace MetadataHealthCheck.v2.Core.Model
         public double NameMatchWeight { get; set; } = 1.0;
         public double AliasMatchWeight { get; set; } = 0.9;
 
+        // Added 2026-07-18, per settled directive on recording-lookup disambiguation.
+        // A real 772-recording same-title search sample showed MusicBrainz's own
+        // relevance score giving zero disambiguation power (every result scored 100).
+        // Recording-level duration (free from the search response, no extra API call)
+        // is used as a GATE in RecordingLookup, before any relationship-scan
+        // confirmation is attempted: percentage-based rather than a flat number of
+        // seconds, since the same sample showed legitimate variance even WITHIN one
+        // correct recording across different releases (a single AC/DC recording's
+        // length differed by ~4 seconds between two of its own release listings).
+        // UNVALIDATED PLACEHOLDER, same status as ArtistCandidateMaxEditDistance above
+        // -- a "suck it and see" knob, no default yet asserted as correct; revisit
+        // once the 70k-artist run gives real data to tune against.
+        public double DurationGateTolerancePercent { get; set; } = 0.03;
+
+        // Settled directive (2026-07-18): missing duration data on a candidate
+        // recording is NOT a disqualification -- only a CONFIRMED mismatch excludes.
+        // Kept as a config bool (rather than a hardcoded skip) so this can be
+        // tightened later if real-data analysis shows sparse MB entries are a bigger
+        // source of false positives than false negatives, without a code change.
+        public bool ExcludeRecordingsWithMissingDuration { get; set; } = false;
+
         // Sampling budget per bucket (§5.5) -- a ceiling, not a target. The sampler
         // stops as soon as confidence crosses a bound, which may happen well before
         // a bucket's ceiling is reached (§18's worked example: AlbumArtist ceiling of

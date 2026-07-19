@@ -46,6 +46,7 @@ ARTIST "Sarah Vaughan"
 
 TRACK track-a-different-song-entirely "A Different Song Entirely"
 ALBUM album-some-earlier-album "Some Earlier Album"
+DURATION_MS 210000
 ALBUMARTIST "Sarah Vaughan"
 ARTIST "Sarah Vaughan"
 
@@ -62,6 +63,7 @@ ARTIST emby-artist-gus-black "Gus Black"
 
 TRACK track-borrowed-time "Borrowed Time"
 ALBUM album-one-cell-in-the-sea "One Cell in the Sea"
+DURATION_MS 253000
 ARTIST "A Fine Frenzy"
 COMPOSER "Gus Black"
 
@@ -73,6 +75,7 @@ ARTIST emby-artist-del-serino "Del Serino"
 
 TRACK track-thats-it-i-quit "That's It, I Quit, I'm Moving On"
 ALBUM album-19 "19"
+DURATION_MS 127000
 ARTIST "Adele"
 COMPOSER "Del Serino"
 
@@ -87,6 +90,8 @@ ARTIST emby-artist-queen "Queen"
 
 TRACK track-bohemian-rhapsody "Bohemian Rhapsody"
 ALBUM album-top-2000-radio-2 "Top 2000 (Radio 2)"
+DURATION_MS 351000
+ALBUMARTIST "Various Artists"
 ARTIST "Queen"
 
 # ---------------------------------------------------------------------------
@@ -99,12 +104,13 @@ ARTIST "Queen"
 # the old SmokeTest covered inline (NameSimilarity.Close/NearExact).
 # ---------------------------------------------------------------------------
 
-ARTIST emby-artist-florence "Florence + the Machine"
+ARTIST emby-artist-florence "Florence & the Machine"
 
 TRACK track-dog-days-are-over "Dog Days Are Over"
 ALBUM album-lungs "Lungs"
-ALBUMARTIST "Florence + the Machine"
-ARTIST "Florence + the Machine"
+DURATION_MS 252000
+ALBUMARTIST "Florence & the Machine"
+ARTIST "Florence & the Machine"
 
 # ---------------------------------------------------------------------------
 # Real-world multi-credit example, added 2026-07-16 (Nick's request): every

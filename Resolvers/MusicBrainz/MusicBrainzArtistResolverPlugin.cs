@@ -47,7 +47,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
             // exclusively inside the Engine's Feeder-ordered per-observation loop, via these
             // collectors -- one shared instance, so its per-(candidate,track) memoization still
             // pays off across every collector that touches it within one resolution run.
-            var recordingLookup = new RecordingLookup(client, logger);
+            var recordingLookup = new RecordingLookup(client, scoringConfig, logger);
 
             Strategies = new ICandidateGenerationStrategy<EmbyArtist>[]
             {

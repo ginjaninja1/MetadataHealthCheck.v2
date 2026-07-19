@@ -189,6 +189,18 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         creditText = string.Join("", names);
                     }
 
+                    // Added 2026-07-18: pick ONE representative release to source the
+                    // richness fields from (a recording can appear on many releases with
+                    // different status/type -- see MbRecordingResult doc comment for why
+                    // these are richness-only, not correctness signals). Prefer the first
+                    // "Official" release if one exists, since that's the one most likely to
+                    // carry populated relationship data; otherwise just the first release
+                    // returned. ReleaseCount is the true count of distinct releases this
+                    // recording appears on (not any single release's own "count" field,
+                    // which represents something else -- how many times the recording's
+                    // title occurs within that one release's own tracklist).
+                    var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
+
                     results.Add(new MbRecordingResult
                     {
                         RecordingId = r.Id ?? "",
@@ -198,6 +210,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         TrackTitleMatches = recTitle.Equals(trackTitle, StringComparison.OrdinalIgnoreCase),
                         ReleaseTitleMatches = releaseTitleMatches,
                         ArtistCreditText = creditText,
+                        LengthMs = r.Length,
+                        Score = ParseScore(r.Score),
+                        ReleaseStatus = representativeRelease?.Status,
+                        ReleaseGroupPrimaryType = representativeRelease?.ReleaseGroup?.PrimaryType,
+                        ReleaseGroupSecondaryTypes = representativeRelease?.ReleaseGroup?.SecondaryTypes ?? new List<string>(),
+                        ReleaseCount = r.Releases?.Count ?? 0,
                     });
                 }
             }
@@ -211,6 +229,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                 _logger.Debug("MbApi", "         Track:  \"{0}\" (matches queried title: {1})", r.TrackTitle, r.TrackTitleMatches);
                 _logger.Debug("MbApi", "         Artist: {0}", r.ArtistCreditText);
                 _logger.Debug("MbApi", "         Album:  \"{0}\" (matches queried album: {1})", r.ReleaseTitle, r.ReleaseTitleMatches);
+                _logger.Debug("MbApi", "         Length: {0}  Status: {1}  Type: {2}  Releases: {3}  Score: {4}",
+                    r.LengthMs.HasValue ? $"{r.LengthMs}ms" : "(none)", r.ReleaseStatus ?? "(none)", r.ReleaseGroupPrimaryType ?? "(none)", r.ReleaseCount, r.Score);
                 // NOTE: no AlbumArtist or Relationship fields here -- a raw recording
                 // search result doesn't carry either. AlbumArtist isn't a MusicBrainz
                 // concept at the recording level at all (that's Emby's field, not
@@ -443,6 +463,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         {
             [DataMember(Name = "title")] public string? Title { get; set; }
             [DataMember(Name = "secondary-types")] public List<string>? SecondaryTypes { get; set; }
+            // Added 2026-07-18: richness signal only, see MbRecordingResult doc comment.
+            [DataMember(Name = "primary-type")] public string? PrimaryType { get; set; }
         }
 
         [DataContract]
@@ -458,12 +480,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             [DataMember(Name = "title")] public string? Title { get; set; }
             [DataMember(Name = "releases")] public List<ReleaseDto>? Releases { get; set; }
             [DataMember(Name = "artist-credit")] public List<ArtistCreditDto>? ArtistCredit { get; set; }
+            // Added 2026-07-18: recording-level duration, ms -- see MbRecordingResult.LengthMs
+            // doc comment for why this became the primary disambiguator over MB's own
+            // (unhelpfully saturated, in the one sample checked) relevance score.
+            [DataMember(Name = "length")] public int? Length { get; set; }
+            // Added 2026-07-18: was silently unparsed until now -- see MbRecordingResult.Score.
+            [DataMember(Name = "score")] public string? Score { get; set; } // MB returns this as a JSON string, not a number -- same quirk as artist search
         }
 
         [DataContract]
         private class ReleaseDto
         {
             [DataMember(Name = "title")] public string? Title { get; set; }
+            // Added 2026-07-18: richness signals only, see MbRecordingResult doc comment.
+            [DataMember(Name = "status")] public string? Status { get; set; }
+            [DataMember(Name = "release-group")] public ReleaseGroupDto? ReleaseGroup { get; set; }
         }
 
         [DataContract]
