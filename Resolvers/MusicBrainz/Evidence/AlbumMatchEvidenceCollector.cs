@@ -30,6 +30,20 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         public string EvidenceType => "AlbumMatch";
 
+        // Required to satisfy IEvidenceCollector<T> as of 2026-07-19 regardless of
+        // this collector's current commented-out/unregistered status in
+        // MusicBrainzArtistResolverPlugin.cs -- C# requires the full interface
+        // contract to be implemented to compile, whether or not an instance is ever
+        // constructed. Reflects what this collector emits if/when re-enabled; since
+        // it's not currently registered, EvidenceConfigValidator will correctly flag
+        // AlbumMatch.Distinctive/Generic as "OrphanedWeight" until it is -- that's the
+        // truthful current state (a real, deliberately-disabled feature), not a bug.
+        public IReadOnlyList<string> PossibleWeightedEvidenceTypes => new[]
+        {
+            "AlbumMatch.Distinctive",
+            "AlbumMatch.Generic",
+        };
+
         public EvidenceRecord? Collect(EmbyArtist source, Candidate candidate, ResolutionContext context)
         {
             var mbAlbums = _client.GetReleaseGroupTitles(candidate.TargetId);

@@ -41,7 +41,10 @@
 		<Compile Remove="SQLitePCLPrettyShim/**/*.cs" />
 	</ItemGroup>
 	<ItemGroup>
+	  <Compile Remove="Resolvers\MusicBrainz\Evidence\CorroborationTierEvidenceCollector.cs" />
+	  <Compile Remove="Resolvers\MusicBrainz\Evidence\ProviderEvidenceCollector.cs" />
 	  <Compile Remove="Resolvers\MusicBrainz\Evidence\RecordingRelationshipEvidenceCollector.cs" />
+	  <Compile Remove="Resolvers\MusicBrainz\Evidence\WorkRelationshipEvidenceCollector.cs" />
 	</ItemGroup>
 
 	<ItemGroup>

@@ -65,7 +65,7 @@ namespace MetadataHealthCheck.v2.Sources.Emby
         public string AlbumName { get; set; } = "";
         public string AlbumId { get; set; } = "";
         public string Role { get; set; } = "";                 // AlbumArtist | Artist | Composer -- this artist's own tier on this track
-        public Dictionary<string, string> ProviderIds { get; set; } = new();  // this TRACK's own provider ids -- Tier 0 evidence, §6.1. Real, consumed key: "MusicBrainzArtist" -> a confirmed MBID (see ProviderIdEvidenceCollector.cs for the exact interpretation, since §6.1/§8.2 don't literally specify the tag's key shape).
+        public Dictionary<string, string> ProviderIds { get; set; } = new();  // this TRACK's own provider ids -- §6.1's Tier 0 evidence concept. Real, would-be-consumed key: "MusicBrainzArtist" -> a confirmed MBID. No collector currently reads this (ProviderIdEvidenceCollector removed 2026-07-19, confirmed vestigial -- see ScoringConfig.cs and MusicBrainzArtistResolverPlugin.cs comments); field kept since the underlying Tier-0 concept is still a real, undecided product question, not because anything consumes it today.
 
         public List<EmbyCreditedName> AlbumArtists { get; set; } = new();
         public List<EmbyCreditedName> Artists { get; set; } = new();

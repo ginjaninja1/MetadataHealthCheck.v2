@@ -240,6 +240,86 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             return results;
         }
 
+        // MusicBrainz's own duration-bucketing width for the "qdur" search field --
+        // INFERRED, not confirmed against MB documentation: reverse-engineered from
+        // one working query (351000ms observed -> qdur:[173 TO 177] worked; 351/2 =
+        // 175.5, which centers in that window). Not a config value, deliberately --
+        // this isn't a lever we control, it's a guess at a fixed property of MB's
+        // own index. If a future duration range shows this assumption breaking,
+        // fix it here, in one place, with a name that says exactly what's being
+        // assumed (2026-07-19, per direct correction from Nick on the earlier draft
+        // that wrongly treated this as configurable).
+        private const int AssumedMbQdurBucketSeconds = 2;
+
+        // Added 2026-07-19 for the TrackDuration rung (§7.2 "Bohemian Rhapsody"
+        // trace): title + qdur range search, used once album and artist have both
+        // already failed as narrowing fields. limit=100 (not the usual 25) because
+        // this rung's value depends on seeing the full narrowed result set, not a
+        // partial page -- see interface doc comment.
+        //
+        // NOTE: ArtistMbid on each returned MbRecordingResult still only captures the
+        // FIRST credited artist (same limitation as SearchRecording above, inherited
+        // from the shared parsing below) -- multi-artist credits (e.g. a duet)
+        // under-count their non-first contributors in any frequency tally built off
+        // this result set. Flagged as a known simplification, not silently accepted;
+        // widening MbRecordingResult to carry all credited artist MBIDs is a larger
+        // structural change left for a deliberate follow-up, not bundled in here.
+        public IReadOnlyList<MbRecordingResult> SearchRecordingByTitleAndDuration(string trackTitle, int observedDurationMs, int qdurToleranceBuckets)
+        {
+            int centerBucket = (int)Math.Round(observedDurationMs / 1000.0 / AssumedMbQdurBucketSeconds);
+            int low = Math.Max(0, centerBucket - qdurToleranceBuckets);
+            int high = centerBucket + qdurToleranceBuckets;
+
+            var query = $"recording:\"{EscapeLucene(trackTitle)}\" AND qdur:[{low} TO {high}]";
+            var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=100";
+            var callDesc = $"track=\"{trackTitle}\" qdur=[{low} TO {high}] (observedMs={observedDurationMs})";
+            var body = Get(url, "SearchRecordingByTitleAndDuration", callDesc);
+            var parsed = body == null ? null : DeserializeJson<RecordingSearchResponseDto>(body);
+
+            var results = new List<MbRecordingResult>();
+            if (parsed?.Recordings != null)
+            {
+                foreach (var r in parsed.Recordings)
+                {
+                    var artistMbid = "";
+                    var creditText = "";
+                    if (r.ArtistCredit != null)
+                    {
+                        var names = new List<string>();
+                        foreach (var c in r.ArtistCredit)
+                        {
+                            names.Add(c.Name ?? "");
+                            if (artistMbid == "" && c.Artist?.Id != null)
+                                artistMbid = c.Artist.Id;
+                        }
+                        creditText = string.Join("", names);
+                    }
+
+                    var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
+
+                    results.Add(new MbRecordingResult
+                    {
+                        RecordingId = r.Id ?? "",
+                        ArtistMbid = artistMbid,
+                        TrackTitle = r.Title ?? "",
+                        ReleaseTitle = "",
+                        TrackTitleMatches = (r.Title ?? "").Equals(trackTitle, StringComparison.OrdinalIgnoreCase),
+                        ReleaseTitleMatches = false,
+                        ArtistCreditText = creditText,
+                        LengthMs = r.Length,
+                        Score = ParseScore(r.Score),
+                        ReleaseStatus = representativeRelease?.Status,
+                        ReleaseGroupPrimaryType = representativeRelease?.ReleaseGroup?.PrimaryType,
+                        ReleaseGroupSecondaryTypes = representativeRelease?.ReleaseGroup?.SecondaryTypes ?? new List<string>(),
+                        ReleaseCount = r.Releases?.Count ?? 0,
+                    });
+                }
+            }
+
+            _logger.Debug("MbApi", "  -> {0} recording result(s) within qdur:[{1} TO {2}]:", results.Count, low, high);
+            return results;
+        }
+
         // ---- C5: relationships (work-level + recording-level, one call) ------
 
         public IReadOnlyList<MbRelationship> GetRelationships(string recordingId)

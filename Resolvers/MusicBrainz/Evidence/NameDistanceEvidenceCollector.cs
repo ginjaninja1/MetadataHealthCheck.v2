@@ -25,6 +25,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         public string EvidenceType => "NameSimilarity";
 
+        // Empty, deliberately: this collector's NameSimilarity.* records are always
+        // Contributing=false (§ settled directive, 2026-07-17) -- opportunistic/logged
+        // only, never scored. An empty list here is itself the documentation of that
+        // fact, checkable by EvidenceConfigValidator rather than only stated in a
+        // comment a future reader might not see.
+        public IReadOnlyList<string> PossibleWeightedEvidenceTypes => Array.Empty<string>();
+
         public EvidenceRecord? Collect(EmbyArtist source, Candidate candidate, ResolutionContext context)
         {
             var candidateName = _client.GetArtistDisplayName(candidate.TargetId);

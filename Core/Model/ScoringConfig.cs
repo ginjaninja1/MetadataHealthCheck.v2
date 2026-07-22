@@ -111,6 +111,28 @@ namespace MetadataHealthCheck.v2.Core.Model
         // source of false positives than false negatives, without a code change.
         public bool ExcludeRecordingsWithMissingDuration { get; set; } = false;
 
+        // Added 2026-07-19: the TrackDuration rung (recording:"TITLE" AND qdur:[..])
+        // narrows a bare title search using MusicBrainz's own quantized-duration
+        // index field, for the case where BOTH the album and artist strings have
+        // already failed as narrowing fields (§7.2's "Bohemian Rhapsody"/351000ms
+        // trace -- 13,113 unfiltered matches down to 62 with this filter applied).
+        // This is a bucket-COUNT tolerance (how many qdur buckets either side of the
+        // observed track's own bucket to include), NOT the bucket WIDTH itself --
+        // the bucket width is not ours to set; see AssumedMbQdurBucketSeconds in
+        // HttpMusicbrainzApiClient.cs for why that's a code constant, not a config
+        // value here. Default 2, confirmed by Nick against a real query.
+        public int QdurToleranceBuckets { get; set; } = 2;
+
+        // Added 2026-07-19: minimum lead (in recording count) the top-ranked artist
+        // must hold over the second-place artist, within a TrackDuration rung's
+        // title+qdur result set, before that frequency ranking is trusted as a real
+        // signal. Without this floor, an obscure/rarely-covered title could produce
+        // a "leader" of just 1 recording -- not actually informative, just whoever
+        // happened to show up. UNVALIDATED PLACEHOLDER, same status as
+        // DurationGateTolerancePercent above -- a starting guess, not yet tuned
+        // against real data.
+        public int TrackDurationMinArtistLead { get; set; } = 2;
+
         // Sampling budget per bucket (§5.5) -- a ceiling, not a target. The sampler
         // stops as soon as confidence crosses a bound, which may happen well before
         // a bucket's ceiling is reached (§18's worked example: AlbumArtist ceiling of
@@ -137,24 +159,41 @@ namespace MetadataHealthCheck.v2.Core.Model
         //
         // "NameSimilarity.*" entries retired 2026-07-13 per §6.1's explicit retirement
         // of name-similarity as an additive evidence type -- name/alias comparison is
-        // now a two-stage mechanism (admission gate + corroboration multiplier, §5.3),
-        // not a scored fact. NOT removed here yet: NameDistanceEvidenceCollector is
-        // still wired into the plugin's static EvidenceCollectors list producing these
-        // exact evidence types, which is itself a real, open contradiction with the
-        // spec -- left alone deliberately (flagged, not silently fixed) pending an
-        // explicit decision on retiring that collector's scored-evidence role.
+        // a two-stage mechanism instead (admission gate in ArtistStrategy + the
+        // MatchedViaAlias/TooPoorToTrust confirmation check in RecordingLookup), not a
+        // scored fact. RESOLVED 2026-07-17: NameDistanceEvidenceCollector's Collect()
+        // sets Contributing=false, so its NameSimilarity.* records are opportunistic/
+        // logged-only (see its own doc comment) and SequentialSampler's Contributing
+        // filter means these three weight entries were never actually consulted --
+        // removed here 2026-07-19 as dead config, not a behavior change. The collector
+        // itself stays wired: its Collect() output is still useful diagnostic logging,
+        // and its static Levenshtein/EvaluateRecordingMatch methods remain load-bearing
+        // for ArtistStrategy's admission gate and RecordingLookup's confirmation check.
         public Dictionary<string, double> EvidenceWeights { get; set; } = new()
         {
-            // Tier 0 (§6.1) -- the track's own asserted MusicBrainz id, via
-            // ProviderIdEvidenceCollector.cs. Added 2026-07-15; previously spec'd,
-            // never built (no collector existed to produce this evidence type at all).
-            ["ProviderIds.Confirmed"] = 5.0,
-            ["NameSimilarity.NearExact"] = 1.5,
-            ["NameSimilarity.Close"] = 0.5,
-            ["NameSimilarity.Poor"] = -2.0,
-            ["WorkRelationship.Writer"] = 2.5,
-            ["WorkRelationship.Composer"] = 2.5,
-            ["WorkRelationship.Lyricist"] = 2.5,
+            // Tier 0 (§6.1)'s "ProviderIds.Confirmed" (the track's own asserted
+            // MusicBrainz id) REMOVED 2026-07-19 along with ProviderIdEvidenceCollector
+            // itself -- confirmed vestigial: with Contributing=false (set 2026-07-17,
+            // same directive that neutered NameSimilarity above), nothing anywhere in
+            // the codebase ever read this evidence type or short-circuited on it, so
+            // it produced one diagnostic log line and had zero effect on any decision.
+            // A real Tier-0 short-circuit (skip the live MB lookup when a file's own
+            // tag already matches) remains a genuine, undecided product question --
+            // this removal is not a decision against that, just against dead code.
+            // "WorkRelationship.Writer/Composer/Lyricist" and "RecordingRelationship.
+            // Producer/Arranger" REMOVED 2026-07-19: same shape as the ProviderIds
+            // removal above -- each was only ever emitted by one of the three
+            // collectors (WorkRelationshipEvidenceCollector, RecordingRelationship-
+            // EvidenceCollector) collapsed into RecordingCorroborationEvidenceCollector
+            // 2026-07-17, which reports everything as CorroborationTier.* instead
+            // regardless of whether confirmation came via performer-credit or a
+            // relationship scan. Confirmed dead: nothing in the codebase emits these
+            // exact strings anymore. Relationship-based confirmations ARE still scored
+            // -- just folded into the same CorroborationTier weight as any other
+            // confirmation at that rung, not distinguished by relationship type. That
+            // collapse itself is unchanged by this removal -- it was already settled
+            // 2026-07-18; this is only removing the now-pointless weight entries left
+            // behind by it.
             // Added 2026-07-13, per §6.1 -- previously missing entirely, which meant
             // AlbumMatchEvidenceCollector/CorroborationTierEvidenceCollector/
             // RecordingRelationshipEvidenceCollector's output would have silently
@@ -165,8 +204,6 @@ namespace MetadataHealthCheck.v2.Core.Model
             ["CorroborationTier.Tier1"] = 3.5,
             ["CorroborationTier.Tier2"] = 1.8,
             ["CorroborationTier.Tier3"] = 0.5,
-            ["RecordingRelationship.Producer"] = 0.8,
-            ["RecordingRelationship.Arranger"] = 0.5,
         };
     }
 }

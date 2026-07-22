@@ -25,6 +25,19 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
     public interface IEvidenceCollector<TSourceEntity> where TSourceEntity : ISourceEntity
     {
         string EvidenceType { get; }
+
+        // Added 2026-07-19: the fixed, complete set of literal EvidenceRecord.EvidenceType
+        // strings this collector can EVER emit with Contributing=true (i.e. the exact
+        // ScoringConfig.EvidenceWeights keys it depends on existing). Empty array if this
+        // collector never contributes to scoring (e.g. opportunistic/logged-only output).
+        // Exists specifically to catch silent drift between what a collector emits and
+        // what ScoringConfig has weights for -- this exact drift has already happened
+        // three separate times (NameSimilarity.*, WorkRelationship.*, ProviderIds.Confirmed
+        // all went dead without anything catching it) before this property existed.
+        // NOT a replacement for EvidenceType above (that's a coarse category label used
+        // elsewhere) -- this is the literal, complete, per-key list.
+        IReadOnlyList<string> PossibleWeightedEvidenceTypes { get; }
+
         EvidenceRecord? Collect(TSourceEntity source, Candidate candidate, ResolutionContext context);
     }
 
@@ -44,6 +57,14 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
     public interface IObservationEvidenceCollector<TSourceEntity> where TSourceEntity : ISourceEntity
     {
         string EvidenceType { get; }
+
+        // See IEvidenceCollector<T>.PossibleWeightedEvidenceTypes above -- same purpose,
+        // duplicated here rather than factored into a shared base interface, since these
+        // two interfaces otherwise share nothing (different Collect signatures, different
+        // call cadence) and a shared base for one property felt like more indirection than
+        // the property warrants. Revisit if a third collector interface ever needs it too.
+        IReadOnlyList<string> PossibleWeightedEvidenceTypes { get; }
+
         IEnumerable<EvidenceRecord> Collect(TSourceEntity source, Candidate candidate, IObservationUnit unit, ResolutionContext context);
     }
 

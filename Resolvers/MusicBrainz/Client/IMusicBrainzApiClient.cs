@@ -128,6 +128,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // -> track alone.
         IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, string? artistName = null);     // C3/C4
 
+        // Added 2026-07-19 for the TrackDuration rung: title + MusicBrainz's own
+        // quantized-duration index field (qdur), used ONLY once both album and
+        // artist have already failed as narrowing fields (§7.2 "Bohemian Rhapsody"
+        // trace -- a plain title search returned 13,113 matches with no way to
+        // disambiguate; a qdur-narrowed search on the same title returned 62, from
+        // which the correct artist was the clear frequency leader). limit=100 (not
+        // the usual 25) is deliberate here -- this rung's entire value is counting
+        // occurrences across the full narrowed result set, not a partial page.
+        IReadOnlyList<MbRecordingResult> SearchRecordingByTitleAndDuration(string trackTitle, int observedDurationMs, int qdurToleranceBuckets);
+
         // Renamed from GetWorkRelationships 2026-07-13: this single call now yields
         // BOTH work-level and recording-level relations (RelationshipLevel discriminates),
         // per §7.2 C5's actual description — not two separate calls.

@@ -41,9 +41,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     /// never a recording's performer is no longer guaranteed to come back NotFound --
     /// it can now be confirmed directly, which is the intended fix for composer-only
     /// candidates (Gus Black/Del Serino real-world cases) producing no evidence at
-    /// all. LookupComposerTier stays dormant in RecordingLookup.cs, unused -- see its
-    /// own doc comment for what it still adds beyond this (the borrowed-name rung)
-    /// and why that's a separate, not-yet-decided question.
+    /// all. LookupComposerTier (and the borrowed-name rung it alone provided) was
+    /// removed from RecordingLookup.cs 2026-07-19, confirmed to have zero callers
+    /// anywhere in the repo. The borrowed-name idea itself was NOT folded into the
+    /// unified ladder before that deletion and remains a real, not-yet-decided
+    /// question -- flagged in RecordingLookup.cs's own comment where the dead code
+    /// used to live, not lost along with it.
     ///
     /// REMOVED 2026-07-18 (Nick's explicit instruction): this collector used to also
     /// emit WorkRelationship.*/RecordingRelationship.* evidence (Contributing=false)
@@ -89,6 +92,20 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // Reports CorroborationTier.* only, as of the 2026-07-18 vestigial-block
         // removal (see class doc comment) -- this property is descriptive only.
         public string EvidenceType => "RecordingCorroboration";
+
+        // The literal set this collector currently emits (see the tier-classification
+        // switch in Collect() below). NOTE 2026-07-19: this list reflects CURRENT code,
+        // which has a known, separately-flagged bug -- the switch was never updated
+        // when the TrackArtist/TrackDuration rungs were added, so both fall into the
+        // Tier3 catch-all rather than getting their own weight. Update this list
+        // in lockstep with that switch once the tier-count/weighting question is
+        // decided, or EvidenceConfigValidator will only be checking a stale picture.
+        public IReadOnlyList<string> PossibleWeightedEvidenceTypes => new[]
+        {
+            "CorroborationTier.Tier1",
+            "CorroborationTier.Tier2",
+            "CorroborationTier.Tier3",
+        };
 
         public IEnumerable<EvidenceRecord> Collect(EmbyArtist source, Candidate candidate, IObservationUnit unit, ResolutionContext context)
         {

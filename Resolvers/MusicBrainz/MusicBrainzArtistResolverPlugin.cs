@@ -72,13 +72,23 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
 
             ObservationEvidenceCollectors = new IObservationEvidenceCollector<EmbyArtist>[]
             {
-                new ProviderIdEvidenceCollector(), // Tier 0, §6.1 -- built 2026-07-15
+                // ProviderIdEvidenceCollector (Tier 0, §6.1, built 2026-07-15) removed
+                // 2026-07-19: with Contributing=false (per the 2026-07-17 directive
+                // that only CorroborationTier evidence affects the decision), it had
+                // zero functional effect -- no code anywhere read its output or
+                // short-circuited on it, so it produced one diagnostic log line and
+                // nothing else. Confirmed vestigial and deleted, not left dormant.
+                // A real Tier-0 short-circuit (skip the live MB lookup when the
+                // file's own tag already matches) remains a genuine, undecided
+                // product question -- this deletion is not a decision against that,
+                // just against dead code with no current effect.
                 // WorkRelationshipEvidenceCollector, RecordingRelationshipEvidenceCollector,
                 // and CorroborationTierEvidenceCollector were collapsed into this single
                 // collector 2026-07-17 -- see RecordingCorroborationEvidenceCollector.cs's
                 // doc comment for why (three collectors were each independently deciding
                 // how to call the shared RecordingLookup, causing real cache-collision
-                // bugs). The three old files remain in the repo, unwired, not deleted.
+                // bugs). The three old files sat unwired, not deleted, until 2026-07-19,
+                // once confirmed to have zero remaining references anywhere in the repo.
                 new RecordingCorroborationEvidenceCollector(client, recordingLookup, logger),
                 // NOT built: AliasEvidenceCollector.cs, which §11.2's file tree still
                 // lists as planned. Left out deliberately, not just not-yet-started —
