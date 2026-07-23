@@ -68,6 +68,26 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         IEnumerable<EvidenceRecord> Collect(TSourceEntity source, Candidate candidate, IObservationUnit unit, ResolutionContext context);
     }
 
+    // Added 2026-07-23: a distinct category from IObservationEvidenceCollector above --
+    // not a variant of it, and not required to also implement it. Ordinary observation
+    // collectors are called once per candidate, independently; this category is for
+    // collectors whose underlying lookup is inherently shared across every live
+    // candidate for one observation (one recording search, one relationship fetch,
+    // checked against all candidates at once), where stopping early must prevent
+    // further per-recording API calls from firing at all, not just skip the next
+    // observation. CollectRounds yields one dictionary per round (candidate.Id ->
+    // newly-produced evidence that round only, never a running total); the caller
+    // merges each round in, re-scores, and checks the decision gate before asking for
+    // the next round. Because this is `yield return`-based, the next round's API call
+    // genuinely never executes until the caller asks for it.
+    public interface IRoundBasedObservationEvidenceCollector<TSourceEntity> where TSourceEntity : ISourceEntity
+    {
+        string EvidenceType { get; }
+        IReadOnlyList<string> PossibleWeightedEvidenceTypes { get; }
+
+        IEnumerable<IReadOnlyDictionary<string, IReadOnlyList<EvidenceRecord>>> CollectRounds(TSourceEntity source, IReadOnlyList<Candidate> candidates, IObservationUnit unit, ResolutionContext context);
+    }
+
     // Optional -- entity types with no natural observation/role concept (§11.4's
     // Album example) simply don't provide one; IResolverPlugin.ObservationUnitProvider
     // is nullable for exactly this reason.
@@ -100,6 +120,11 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         IEnumerable<IEvidenceCollector<TSourceEntity>> EvidenceCollectors { get; }
         // Empty list if the entity type has no per-observation evidence at all.
         IEnumerable<IObservationEvidenceCollector<TSourceEntity>> ObservationEvidenceCollectors { get; }
+        // Added 2026-07-23: a second, separate collector category (see
+        // IRoundBasedObservationEvidenceCollector's own doc comment for why it isn't
+        // just folded into ObservationEvidenceCollectors above). Empty list for any
+        // plugin that has no round-based collectors at all.
+        IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> RoundBasedObservationEvidenceCollectors { get; }
         // Null if the entity type has no observation/role concept (§11.4) -- SequentialSampler
         // then scores from static evidence alone, same as Phase 1's behavior.
         IObservationUnitProvider<TSourceEntity>? ObservationUnitProvider { get; }

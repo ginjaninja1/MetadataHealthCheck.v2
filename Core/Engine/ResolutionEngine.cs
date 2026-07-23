@@ -55,6 +55,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
             var sampler = new SequentialSampler<Sources.Emby.EmbyArtist>(
                 _plugin.EvidenceCollectors,
                 _plugin.ObservationEvidenceCollectors,
+                _plugin.RoundBasedObservationEvidenceCollectors,
                 _plugin.ObservationUnitProvider,
                 _plugin.Scorer,
                 _plugin.DecisionGate,

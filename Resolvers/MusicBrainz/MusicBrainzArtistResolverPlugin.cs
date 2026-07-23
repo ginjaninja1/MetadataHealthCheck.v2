@@ -18,6 +18,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         public IEnumerable<IEvidenceCollector<EmbyArtist>> EvidenceCollectors { get; }
         // Per-observation (per-track) evidence, sampled by SequentialSampler.
         public IEnumerable<IObservationEvidenceCollector<EmbyArtist>> ObservationEvidenceCollectors { get; }
+        // Round-based per-observation evidence (2026-07-23) -- see
+        // IRoundBasedObservationEvidenceCollector's own doc comment for why this is a
+        // separate category from ObservationEvidenceCollectors above.
+        public IEnumerable<IRoundBasedObservationEvidenceCollector<EmbyArtist>> RoundBasedObservationEvidenceCollectors { get; }
         public IObservationUnitProvider<EmbyArtist>? ObservationUnitProvider { get; }
         public IBeliefScorer Scorer { get; }
         public IDecisionGate DecisionGate { get; }
@@ -82,14 +86,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
                 // file's own tag already matches) remains a genuine, undecided
                 // product question -- this deletion is not a decision against that,
                 // just against dead code with no current effect.
-                // WorkRelationshipEvidenceCollector, RecordingRelationshipEvidenceCollector,
-                // and CorroborationTierEvidenceCollector were collapsed into this single
-                // collector 2026-07-17 -- see RecordingCorroborationEvidenceCollector.cs's
-                // doc comment for why (three collectors were each independently deciding
-                // how to call the shared RecordingLookup, causing real cache-collision
-                // bugs). The three old files sat unwired, not deleted, until 2026-07-19,
-                // once confirmed to have zero remaining references anywhere in the repo.
-                new RecordingCorroborationEvidenceCollector(client, recordingLookup, logger),
+                // RecordingCorroborationEvidenceCollector moved OUT of this array
+                // 2026-07-23 -- it's now round-based (IRoundBasedObservationEvidenceCollector,
+                // see RoundBasedObservationEvidenceCollectors below), not per-candidate.
                 // NOT built: AliasEvidenceCollector.cs, which §11.2's file tree still
                 // lists as planned. Left out deliberately, not just not-yet-started —
                 // §6.1/§5.3's own retirement notes say alias-match is no longer a
@@ -101,6 +100,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
                 // contradict it. Flagged as an open spec contradiction, not resolved
                 // silently either way — worth a direct answer before touching §11.2's
                 // file tree.
+            };
+
+            RoundBasedObservationEvidenceCollectors = new IRoundBasedObservationEvidenceCollector<EmbyArtist>[]
+            {
+                // See RecordingCorroborationEvidenceCollector.cs's 2026-07-23 doc comment
+                // for why this moved here from ObservationEvidenceCollectors above.
+                new RecordingCorroborationEvidenceCollector(client, recordingLookup, logger),
             };
 
             ObservationUnitProvider = new EmbyArtistObservationUnitProvider();

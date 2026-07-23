@@ -22,6 +22,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
     {
         private readonly IEnumerable<IEvidenceCollector<TSourceEntity>> _staticCollectors;
         private readonly IEnumerable<IObservationEvidenceCollector<TSourceEntity>> _observationCollectors;
+        private readonly IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> _roundBasedCollectors;
         private readonly IObservationUnitProvider<TSourceEntity>? _unitProvider;
         private readonly IBeliefScorer _scorer;
         private readonly IDecisionGate _decisionGate;
@@ -30,6 +31,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
         public SequentialSampler(
             IEnumerable<IEvidenceCollector<TSourceEntity>> staticCollectors,
             IEnumerable<IObservationEvidenceCollector<TSourceEntity>> observationCollectors,
+            IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedCollectors,
             IObservationUnitProvider<TSourceEntity>? unitProvider,
             IBeliefScorer scorer,
             IDecisionGate decisionGate,
@@ -37,6 +39,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
         {
             _staticCollectors = staticCollectors;
             _observationCollectors = observationCollectors;
+            _roundBasedCollectors = roundBasedCollectors;
             _unitProvider = unitProvider;
             _scorer = scorer;
             _decisionGate = decisionGate;
@@ -141,10 +144,57 @@ namespace MetadataHealthCheck.v2.Core.Engine
                                 _logger.Debug("Sampler", "  [{0}] ---- end opportunistic evidence ----", candidate.TargetId);
                             }
                         }
+                        // Added 2026-07-23: round-based collectors (currently just
+                        // RecordingCorroborationEvidenceCollector) check ALL live candidates
+                        // jointly per round, re-scoring and checking the decision gate after
+                        // EVERY round (not just once per whole observation) -- because these
+                        // helpers are yield-return-based, stopping here (foreach+break) means
+                        // the next round's API call (e.g. the next recording's
+                        // GetRelationships) genuinely never fires. See
+                        // IRoundBasedObservationEvidenceCollector's own doc comment.
+                        bool stoppedMidObservation = false;
+                        foreach (var collector in _roundBasedCollectors)
+                        {
+                            foreach (var round in collector.CollectRounds(source, candidates, unit, context))
+                            {
+                                foreach (var roundKvp in round)
+                                {
+                                    var candidateId = roundKvp.Key;
+                                    var records = roundKvp.Value;
+                                    foreach (var record in records.Where(r => r.Contributing))
+                                    {
+                                        evidenceByCandidate[candidateId].Add(record);
+                                        repository.SaveEvidence(record);
+                                        LogEvidence(candidateId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                                    }
+                                    foreach (var record in records.Where(r => !r.Contributing))
+                                    {
+                                        evidenceByCandidate[candidateId].Add(record);
+                                        repository.SaveEvidence(record);
+                                        LogEvidence(candidateId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                                    }
+                                }
+
+                                decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
+                                if (decision.Status != "needs_review")
+                                {
+                                    stoppedMidObservation = true;
+                                    break;
+                                }
+                            }
+                            if (stoppedMidObservation) break;
+                        }
+
+                        // Unconditional recompute: guards against a stale `decision` from a
+                        // PRIOR observation when this observation's round-based collectors
+                        // produced zero rounds (e.g. nothing confirmed at all) -- without
+                        // this, the check below could act on last observation's result.
+                        // Harmless/idempotent when stoppedMidObservation is already true.
+                        decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
+
                         drawn++;
                         Banner($"END OBSERVATION #{drawn}");
 
-                        decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
                         if (decision.Status != "needs_review")
                         {
                             // Deliberately doesn't state decision.Status/Confidence here
