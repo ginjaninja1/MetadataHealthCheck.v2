@@ -151,17 +151,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         // ---- C3/C4: recording search -----------------------------------------
 
-        public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, string? artistName = null)
+        public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null)
         {
             var parts = new List<string> { $"recording:\"{EscapeLucene(trackTitle)}\"" };
             if (!string.IsNullOrWhiteSpace(albumTitle))
                 parts.Add($"release:\"{EscapeLucene(albumTitle)}\"");
-            if (!string.IsNullOrWhiteSpace(artistName))
-                parts.Add($"artist:\"{EscapeLucene(artistName)}\"");
+            var artistNameList = (artistNames ?? Enumerable.Empty<string>())
+                .Where(n => !string.IsNullOrWhiteSpace(n))
+                .Distinct()
+                .ToList();
+            if (artistNameList.Count > 0)
+                parts.Add($"artist:({string.Join(" OR ", artistNameList.Select(n => $"\"{EscapeLucene(n)}\""))})");
             var query = string.Join(" AND ", parts);
 
             var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=25";
-            var callDesc = $"track=\"{trackTitle}\" album=\"{albumTitle ?? "(none)"}\" artist=\"{artistName ?? "(none)"}\"";
+            var callDesc = $"track=\"{trackTitle}\" album=\"{albumTitle ?? "(none)"}\" artist=\"{(artistNameList.Count > 0 ? string.Join(" OR ", artistNameList) : "(none)")}\"";
             var body = Get(url, "SearchRecording", callDesc);
             var parsed = body == null ? null : DeserializeJson<RecordingSearchResponseDto>(body);
 

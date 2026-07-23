@@ -122,11 +122,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         IReadOnlyList<MbArtistResult> SearchArtist(string name);                                  // C1
         IReadOnlyList<MbAlbumTitle> GetReleaseGroupTitles(string artistMbid);                       // C2 (subset)
 
-        // Extended 2026-07-12 with an artistName parameter (nullable, defaults to null so
+        // Extended 2026-07-12 with an artistNames parameter (nullable, defaults to null so
         // pre-existing call sites don't need every caller touched at once) to support
         // RecordingLookup.cs's three-rung fallback ladder: track+artist+album -> track+album
         // -> track alone.
-        IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, string? artistName = null);     // C3/C4
+        // new:
+        IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null);     // C3/C4
 
         // Added 2026-07-19 for the TrackDuration rung: title + MusicBrainz's own
         // quantized-duration index field (qdur), used ONLY once both album and

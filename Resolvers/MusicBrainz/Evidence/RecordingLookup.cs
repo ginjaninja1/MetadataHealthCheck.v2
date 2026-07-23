@@ -147,6 +147,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         private readonly MetadataHealthCheck.v2.Diagnostics.StructuredLogger? _logger;
         private readonly Dictionary<(string CandidateMbid, string TrackId), RecordingLookupResult> _cache = new();
 
+        // new field, added next to _durationRungCache:
+        // Raw-search cache, independent of candidateMbid: the query text for the
+        // name/album rungs depends only on the track and which rung is being tried,
+        // never on which candidate is being confirmed against the results (see
+        // RecordingCorroborationEvidenceCollector's doc comment on rung-1 search
+        // text). Two same-named candidates (e.g. two different MBIDs both named
+        // "Queen") were each triggering an identical HTTP call per rung before this
+        // -- this cache means the second candidate re-evaluates the first's already-
+        // fetched result set instead of re-querying MusicBrainz.
+        private readonly Dictionary<(string TrackId, RecordingLookupRung Rung), IReadOnlyList<MbRecordingResult>> _nameRungSearchCache = new();
         // Added 2026-07-19: the TrackDuration rung's query (title+qdur) and the
         // artist-frequency tally built from it depend ONLY on the track (title +
         // duration), never on which candidate is being confirmed -- unlike the rest
@@ -184,7 +194,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         /// existing tests), in which case relationship-scan confirmation only ever
         /// matches candidateMbid directly.
         /// </param>
-        public RecordingLookupResult Lookup(string candidateMbid, EmbyTrackCredit track, string? artistName, IEnumerable<string>? relationshipMbids = null)
+        public RecordingLookupResult Lookup(string candidateMbid, EmbyTrackCredit track, IEnumerable<string>? artistNames, IEnumerable<string>? relationshipMbids = null)
         {
             var key = (candidateMbid, track.TrackId);
             if (_cache.TryGetValue(key, out var cached))
@@ -193,16 +203,17 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 return cached;
             }
 
-            var result = Resolve(candidateMbid, track, artistName, (relationshipMbids ?? Enumerable.Empty<string>()).ToList());
+            var names = (artistNames ?? Enumerable.Empty<string>()).ToList();
+            var result = Resolve(candidateMbid, track, names, (relationshipMbids ?? Enumerable.Empty<string>()).ToList());
             _cache[key] = result;
             return result;
         }
 
-        private RecordingLookupResult Resolve(string candidateMbid, EmbyTrackCredit track, string? artistName, IReadOnlyList<string> relationshipMbids)
+        private RecordingLookupResult Resolve(string candidateMbid, EmbyTrackCredit track, IReadOnlyList<string> artistNames, IReadOnlyList<string> relationshipMbids)
         {
-            if (artistName != null)
+            if (artistNames.Count > 0)
             {
-                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, _client.SearchRecording(track.TrackName, track.AlbumName, artistName), track.Duration, RecordingLookupRung.TrackArtistAlbum);
+                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, _client.SearchRecording(track.TrackName, track.AlbumName, artistNames), track.Duration, RecordingLookupRung.TrackArtistAlbum);
                 if (evaluated != null)
                 {
                     _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+artist+album){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtistAlbum, ConfirmationSuffix(evaluated));
@@ -211,15 +222,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track+artist+album) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtistAlbum);
             }
 
-            if (artistName != null)
+            if (artistNames.Count > 0)
             {
-                // Added 2026-07-19: rescues observations where the ALBUM string is
-                // the doozie (e.g. a radio-countdown compilation title with no real
-                // MB release) but the artist string is fine -- TrackArtistAlbum and
-                // TrackAlbum both fail identically in that case (neither has a way
-                // to succeed without a real album match), so this rung tries the
-                // artist alone before giving up on name-based narrowing entirely.
-                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, _client.SearchRecording(track.TrackName, null, artistName), track.Duration, RecordingLookupRung.TrackArtist);
+                // Added 2026-07-19: rescues observations ...
+                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, _client.SearchRecording(track.TrackName, null, artistNames), track.Duration, RecordingLookupRung.TrackArtist);
                 if (evaluated != null)
                 {
                     _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+artist, no album){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtist, ConfirmationSuffix(evaluated));
@@ -359,6 +365,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             public IReadOnlyList<MbRecordingResult> Recordings { get; set; } = Array.Empty<MbRecordingResult>();
             public IReadOnlyList<(string ArtistMbid, int Count)> RankedArtists { get; set; } = Array.Empty<(string, int)>();
         }
+
+        private IReadOnlyList<MbRecordingResult> SearchRecordingCached(EmbyTrackCredit track, string? albumTitle, IEnumerable<string>? artistNames, RecordingLookupRung rung)
+        {
+            var key = (track.TrackId, rung);
+            if (_nameRungSearchCache.TryGetValue(key, out var cached))
+            {
+                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung query cache hit, no new API call.", rung, track.TrackName);
+                return cached;
+            }
+
+            var results = _client.SearchRecording(track.TrackName, albumTitle, artistNames);
+            _nameRungSearchCache[key] = results;
+            return results;
+        }
+
 
         private TrackDurationLookupResult GetOrBuildDurationRungData(EmbyTrackCredit track)
         {

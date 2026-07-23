@@ -95,9 +95,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
         // The literal set this collector currently emits (see the tier-classification
         // switch in Collect() below). NOTE 2026-07-19: this list reflects CURRENT code,
-        // which has a known, separately-flagged bug -- the switch was never updated
-        // when the TrackArtist/TrackDuration rungs were added, so both fall into the
-        // Tier3 catch-all rather than getting their own weight. Update this list
+        // which has a known, separately-flagged bug Update this list
         // in lockstep with that switch once the tier-count/weighting question is
         // decided, or EvidenceConfigValidator will only be checking a stale picture.
         public IReadOnlyList<string> PossibleWeightedEvidenceTypes => new[]
@@ -133,8 +131,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             // fact already sitting on the observation, used purely to narrow the query),
             // never the candidate's identity. This generalizes cleanly to every Role,
             // present and future, with no per-role special-casing at all.
-            var recordedPerformerName = track.AlbumArtists.FirstOrDefault()?.Name ?? track.Artists.FirstOrDefault()?.Name;
-            var lookup = _recordingLookup.Lookup(candidate.TargetId, track, artistName: recordedPerformerName, relationshipMbids: candidate.RelationshipMbids);
+            var recordedPerformerNames = track.Artists.Select(a => a.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+            if (recordedPerformerNames.Count == 0)
+                recordedPerformerNames = track.AlbumArtists.Select(a => a.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
+            var lookup = _recordingLookup.Lookup(candidate.TargetId, track, artistNames: recordedPerformerNames, relationshipMbids: candidate.RelationshipMbids);
             var rec = lookup.Recording;
             if (rec == null) yield break;
 
@@ -164,12 +164,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             {
                 RecordingLookupRung.TrackArtistAlbum => "CorroborationTier.Tier1",
                 RecordingLookupRung.TrackAlbum => "CorroborationTier.Tier2",
+                RecordingLookupRung.TrackArtist => "CorroborationTier.Tier2",
                 _ => "CorroborationTier.Tier3",
             };
-            string tierDescription = tier switch
+            string tierDescription = lookup.RungReached switch
             {
-                "CorroborationTier.Tier1" => "full-triple (track+artist+album search)",
-                "CorroborationTier.Tier2" => "track+album search, no artist filter",
+                RecordingLookupRung.TrackArtistAlbum => "full-triple (track+artist+album search)",
+                RecordingLookupRung.TrackAlbum => "track+album search, no artist filter",
+                RecordingLookupRung.TrackArtist => "track+artist search, no album",
+                RecordingLookupRung.TrackDuration => "title+duration frequency search",
                 _ => "track-only search",
             };
             string aliasNote = lookup.MatchedViaAlias ? " (matched via a registered alias)" : "";

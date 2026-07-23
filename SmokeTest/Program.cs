@@ -33,6 +33,7 @@ using SmokeTest;
 //      get this; it's a read of what the engine already recorded.
 //   4. A DECISION block that states the outcome against the actual configured
 //      thresholds, not just the bare status string.
+Console.OutputEncoding = System.Text.Encoding.UTF8;
 Console.WriteLine("=== MetadataHealthCheck.v2 SmokeTest: LIVE MusicBrainz run ===");
 Console.WriteLine("Real observation data (SmokeTest/Observations.txt), real engine, and REAL");
 Console.WriteLine("MusicBrainz data via https://musicbrainz.emby.tv/ws/2/ (HttpMusicBrainzApiClient).");
