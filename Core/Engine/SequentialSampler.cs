@@ -100,7 +100,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
             // first), unit by unit within a bucket, stopping the instant any bound
             // is crossed. BucketCeiling is a safety cap on grinding through a low-
             // signal bucket forever, not a target to reach (§5.5).
-            if (_unitProvider != null && _observationCollectors.Any())
+            // new:
+            if (_unitProvider != null && (_observationCollectors.Any() || _roundBasedCollectors.Any()))
             {
                 foreach (var bucket in _unitProvider.GetOrderedBuckets(source, context))
                 {

@@ -48,7 +48,7 @@ var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboar
 var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfig, logger);
 
 Banner("STAGE: evidence/weight consistency check");
-var configFindings = EvidenceConfigValidator.Validate(plugin.EvidenceCollectors, plugin.ObservationEvidenceCollectors, scoringConfig.EvidenceWeights);
+var configFindings = EvidenceConfigValidator.Validate(plugin.EvidenceCollectors, plugin.ObservationEvidenceCollectors, plugin.RoundBasedObservationEvidenceCollectors, scoringConfig.EvidenceWeights);
 if (configFindings.Count == 0)
 {
     Console.WriteLine("No issues found: every ScoringConfig.EvidenceWeights entry is declared by some registered collector, and every declared weighted evidence type has a matching weight entry.\n");

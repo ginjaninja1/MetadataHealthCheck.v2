@@ -37,6 +37,7 @@ namespace MetadataHealthCheck.v2.Core.Model
         public static IReadOnlyList<Finding> Validate<TSourceEntity>(
             IEnumerable<IEvidenceCollector<TSourceEntity>> evidenceCollectors,
             IEnumerable<IObservationEvidenceCollector<TSourceEntity>> observationEvidenceCollectors,
+            IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedObservationEvidenceCollectors,
             IReadOnlyDictionary<string, double> evidenceWeights)
             where TSourceEntity : ISourceEntity
         {
@@ -45,6 +46,9 @@ namespace MetadataHealthCheck.v2.Core.Model
                 foreach (var t in c.PossibleWeightedEvidenceTypes)
                     declared.Add(t);
             foreach (var c in observationEvidenceCollectors)
+                foreach (var t in c.PossibleWeightedEvidenceTypes)
+                    declared.Add(t);
+            foreach (var c in roundBasedObservationEvidenceCollectors)
                 foreach (var t in c.PossibleWeightedEvidenceTypes)
                     declared.Add(t);
 
