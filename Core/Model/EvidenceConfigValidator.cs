@@ -18,9 +18,9 @@ namespace MetadataHealthCheck.v2.Core.Model
     {
         public class Finding
         {
-            public required string Severity { get; init; } // "OrphanedWeight" or "UndeclaredWeight"
-            public required string EvidenceType { get; init; }
-            public required string Detail { get; init; }
+            public string Severity { get; set; } = ""; // "OrphanedWeight" or "UndeclaredWeight"
+            public string EvidenceType { get; set; } = "";
+            public string Detail { get; set; } = "";
         }
 
         // OrphanedWeight: a ScoringConfig.EvidenceWeights key that no registered
