@@ -151,7 +151,11 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         // ---- C3/C4: recording search -----------------------------------------
 
-        public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null)
+        // Extracted 2026-07-24 so a cache layer sitting above this client (e.g.
+        // RecordingLookup's own per-rung cache) can log the URL a cache hit avoided
+        // calling, without duplicating this query-construction logic. This method
+        // builds the query/URL/description only -- it makes no HTTP call itself.
+        private (string Url, string CallDesc) BuildSearchRecordingQuery(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames)
         {
             var parts = new List<string> { $"recording:\"{EscapeLucene(trackTitle)}\"" };
             if (!string.IsNullOrWhiteSpace(albumTitle))
@@ -166,6 +170,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
             var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=25";
             var callDesc = $"track=\"{trackTitle}\" album=\"{albumTitle ?? "(none)"}\" artist=\"{(artistNameList.Count > 0 ? string.Join(" OR ", artistNameList) : "(none)")}\"";
+            return (url, callDesc);
+        }
+
+        // Public per interface addition 2026-07-24: exposes the same query-building
+        // logic SearchRecording uses internally, purely for logging purposes (see
+        // BuildSearchRecordingQuery doc comment above). Makes no HTTP call.
+        public string DescribeSearchRecordingUrl(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null)
+        {
+            var (url, _) = BuildSearchRecordingQuery(trackTitle, albumTitle, artistNames);
+            return url;
+        }
+
+        public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null)
+        {
+            var (url, callDesc) = BuildSearchRecordingQuery(trackTitle, albumTitle, artistNames);
             var body = Get(url, "SearchRecording", callDesc);
             var parsed = body == null ? null : DeserializeJson<RecordingSearchResponseDto>(body);
 
@@ -268,7 +287,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // this result set. Flagged as a known simplification, not silently accepted;
         // widening MbRecordingResult to carry all credited artist MBIDs is a larger
         // structural change left for a deliberate follow-up, not bundled in here.
-        public IReadOnlyList<MbRecordingResult> SearchRecordingByTitleAndDuration(string trackTitle, int observedDurationMs, int qdurToleranceBuckets)
+        // See BuildSearchRecordingQuery's doc comment above -- same rationale, added
+        // at the same time (2026-07-24), for this rung's query instead.
+        private (string Url, string CallDesc, int Low, int High) BuildSearchRecordingByTitleAndDurationQuery(string trackTitle, int observedDurationMs, int qdurToleranceBuckets)
         {
             int centerBucket = (int)Math.Round(observedDurationMs / 1000.0 / AssumedMbQdurBucketSeconds);
             int low = Math.Max(0, centerBucket - qdurToleranceBuckets);
@@ -277,6 +298,18 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             var query = $"recording:\"{EscapeLucene(trackTitle)}\" AND qdur:[{low} TO {high}]";
             var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=100";
             var callDesc = $"track=\"{trackTitle}\" qdur=[{low} TO {high}] (observedMs={observedDurationMs})";
+            return (url, callDesc, low, high);
+        }
+
+        public string DescribeSearchRecordingByTitleAndDurationUrl(string trackTitle, int observedDurationMs, int qdurToleranceBuckets)
+        {
+            var (url, _, _, _) = BuildSearchRecordingByTitleAndDurationQuery(trackTitle, observedDurationMs, qdurToleranceBuckets);
+            return url;
+        }
+
+        public IReadOnlyList<MbRecordingResult> SearchRecordingByTitleAndDuration(string trackTitle, int observedDurationMs, int qdurToleranceBuckets)
+        {
+            var (url, callDesc, low, high) = BuildSearchRecordingByTitleAndDurationQuery(trackTitle, observedDurationMs, qdurToleranceBuckets);
             var body = Get(url, "SearchRecordingByTitleAndDuration", callDesc);
             var parsed = body == null ? null : DeserializeJson<RecordingSearchResponseDto>(body);
 
@@ -328,13 +361,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         public IReadOnlyList<MbRelationship> GetRelationships(string recordingId)
         {
+            var url = $"recording/{recordingId}?inc=work-rels+artist-rels+work-level-rels&fmt=json";
+
             if (_knownRelationships.TryGetValue(recordingId, out var cached))
             {
-                _logger.Debug("MbApi", "[GetRelationships] recordingId={0} -- cached from an earlier call, no live call needed. {1} relationship(s).", recordingId, cached.Count);
+                _logger.Info("MbApi", "[GetRelationships] recordingId={0}", recordingId);
+                _logger.Info("MbApi", "  GET https://musicbrainz.emby.tv/ws/2/{0}", url);
+                _logger.Debug("MbApi", "  -> cached from an earlier call, no live call needed. {0} relationship(s).", cached.Count);
                 return cached;
             }
 
-            var url = $"recording/{recordingId}?inc=work-rels+artist-rels+work-level-rels&fmt=json";
             var body = Get(url, "GetRelationships", $"recordingId={recordingId}");
             var parsed = body == null ? null : DeserializeJson<RecordingRelationshipsDto>(body);
 
@@ -381,13 +417,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         public string GetArtistDisplayName(string artistMbid)
         {
+            var url = $"artist/{artistMbid}?fmt=json";
+
             if (_knownArtistNames.TryGetValue(artistMbid, out var cached))
             {
-                _logger.Debug("MbApi", "[GetArtistDisplayName] artistMbid={0} -- cached from an earlier SearchArtist result, no live call needed. name=\"{1}\"", artistMbid, cached);
+                _logger.Info("MbApi", "[GetArtistDisplayName] artistMbid={0}", artistMbid);
+                _logger.Info("MbApi", "  GET https://musicbrainz.emby.tv/ws/2/{0}", url);
+                _logger.Debug("MbApi", "  -> cached from an earlier SearchArtist result, no live call needed. name=\"{0}\"", cached);
                 return cached;
             }
 
-            var url = $"artist/{artistMbid}?fmt=json";
             var body = Get(url, "GetArtistDisplayName", $"artistMbid={artistMbid}");
             var parsed = body == null ? null : DeserializeJson<ArtistDto>(body);
             var name = parsed?.Name ?? "";

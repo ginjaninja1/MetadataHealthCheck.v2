@@ -139,6 +139,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // occurrences across the full narrowed result set, not a partial page.
         IReadOnlyList<MbRecordingResult> SearchRecordingByTitleAndDuration(string trackTitle, int observedDurationMs, int qdurToleranceBuckets);
 
+        // Added 2026-07-24: exposes the same query-construction logic SearchRecording/
+        // SearchRecordingByTitleAndDuration use internally, purely so a cache layer
+        // sitting above this client (RecordingLookup's per-rung caches) can log the
+        // URL a cache hit avoided calling, without re-implementing the query format
+        // itself. Neither method makes an HTTP call.
+        string DescribeSearchRecordingUrl(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null);
+        string DescribeSearchRecordingByTitleAndDurationUrl(string trackTitle, int observedDurationMs, int qdurToleranceBuckets);
+
         // Renamed from GetWorkRelationships 2026-07-13: this single call now yields
         // BOTH work-level and recording-level relations (RelationshipLevel discriminates),
         // per §7.2 C5's actual description — not two separate calls.

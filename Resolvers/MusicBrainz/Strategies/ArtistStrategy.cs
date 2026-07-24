@@ -3,6 +3,7 @@ using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence;
 using MetadataHealthCheck.v2.Sources.Emby;
+using System.Linq;
 
 namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
 {
@@ -118,11 +119,18 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
 
             _logger?.Info("ArtistCandidateGen", "[{0}] Complete: {1} of {2} search result(s) admitted as candidates.", source.DisplayName, ordered.Count, artistResults.Count);
 
+            // Materialized eagerly (rather than fetched lazily inside the yield loop
+            // below) purely so a consolidated summary can be logged once, after every
+            // candidate's relationships are known, before any candidate is handed to
+            // the sampler.
+            var finalCandidates = new List<Candidate>();
+            var relationshipNamesByCandidate = new List<IReadOnlyList<(string Name, string Mbid)>>();
             foreach (var (result, tier) in ordered)
             {
-                var relationshipMbids = FetchValidRelationshipMbids(result.Mbid, result.Name, cgConfig);
+                var relationships = FetchValidRelationships(result.Mbid, result.Name, cgConfig);
+                relationshipNamesByCandidate.Add(relationships);
 
-                yield return new Candidate
+                finalCandidates.Add(new Candidate
                 {
                     SourceEntityId = source.SourceId,
                     TargetSystem = "MusicBrainz",
@@ -131,8 +139,28 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     GenerationStrategy = StrategyName,
                     GenerationQuery = $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
                     CreatedAt = DateTime.UtcNow,
-                    RelationshipMbids = relationshipMbids,
-                };
+                    RelationshipMbids = relationships.Select(r => r.Mbid).ToList(),
+                });
+            }
+
+            _logger?.Info("ArtistCandidateGen", "================================================================");
+            _logger?.Info("ArtistCandidateGen", "Artist Candidate Summary");
+            _logger?.Info("ArtistCandidateGen", "================================================================");
+            for (int i = 0; i < finalCandidates.Count; i++)
+            {
+                var (result, _) = ordered[i];
+                var aliasText = result.Aliases.Count == 0 ? "(none)" : string.Join(", ", result.Aliases);
+                var relText = relationshipNamesByCandidate[i].Count == 0
+                    ? "(none)"
+                    : string.Join(", ", relationshipNamesByCandidate[i].Select(r => r.Name));
+                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} aliases=[{3}] relationships=[{4}]",
+                    result.Mbid, result.Name, result.Score, aliasText, relText);
+            }
+            _logger?.Info("ArtistCandidateGen", "================================================================");
+
+            foreach (var candidate in finalCandidates)
+            {
+                yield return candidate;
             }
         }
 
@@ -140,23 +168,25 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
         // directive -- not lazy/sampler-order). Filters to
         // ValidArtistRelationshipTypeIds ("is person" only, seeded); logs each
         // relation's admit/drop decision the same way SearchArtist's own admission
-        // gate is logged above.
-        private IReadOnlyList<string> FetchValidRelationshipMbids(string candidateMbid, string candidateName, CandidateGenerationConfig cgConfig)
+        // gate is logged above. Returns both name and MBID per admitted relation --
+        // the candidate summary log needs the name, Candidate.RelationshipMbids
+        // (built by the caller) only ever needed the MBID.
+        private IReadOnlyList<(string Name, string Mbid)> FetchValidRelationships(string candidateMbid, string candidateName, CandidateGenerationConfig cgConfig)
         {
             var relations = _client.GetArtistRelationships(candidateMbid);
             if (relations.Count == 0)
-                return Array.Empty<string>();
+                return Array.Empty<(string, string)>();
 
             _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" -- fetching artist-rels...", candidateMbid, candidateName);
 
             var validIds = new HashSet<string>(cgConfig.ValidArtistRelationshipTypeIds, StringComparer.OrdinalIgnoreCase);
-            var admitted = new List<string>();
+            var admitted = new List<(string Name, string Mbid)>();
             foreach (var rel in relations)
             {
                 if (validIds.Contains(rel.RelationshipTypeId))
                 {
                     _logger?.Info("ArtistCandidateGen", "    relation type=\"{0}\" -> \"{1}\" [{2}] -- ADMITTED as performs-as.", rel.RelationshipType, rel.ArtistName, rel.ArtistMbid);
-                    admitted.Add(rel.ArtistMbid);
+                    admitted.Add((rel.ArtistName, rel.ArtistMbid));
                 }
                 else
                 {

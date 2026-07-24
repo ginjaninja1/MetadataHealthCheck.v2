@@ -27,7 +27,7 @@ namespace MetadataHealthCheck.v2.Core.Model
         // threshold for the (artist:"NAME" OR alias:"NAME") query -- MB's alias hits
         // score inherently lower than direct name hits, and 67 is where genuine
         // matches were observed to separate from noise.
-        public int ArtistCandidateMinScore { get; set; } = 67;
+        public int ArtistCandidateMinScore { get; set; } = 80;
 
         // Stage 1's actual admission mechanism (§5.3): raw Levenshtein edit distance
         // (not a normalized 0-1 ratio) between normalized source name and normalized

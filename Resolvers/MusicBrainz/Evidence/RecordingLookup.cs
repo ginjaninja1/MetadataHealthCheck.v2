@@ -590,7 +590,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             var key = (track.TrackId, rung);
             if (_nameRungSearchCache.TryGetValue(key, out var cached))
             {
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung query cache hit, no new API call.", rung, track.TrackName);
+                var describedUrl = _client.DescribeSearchRecordingUrl(track.TrackName, albumTitle, artistNames);
+                _logger?.Info("RecordingLookup", "[{0}] \"{1}\"", rung, track.TrackName);
+                _logger?.Info("RecordingLookup", "  GET https://musicbrainz.emby.tv/ws/2/{0}", describedUrl);
+                _logger?.Debug("RecordingLookup", "  -> rung query cache hit, no new API call.");
                 return cached;
             }
 
@@ -604,7 +607,11 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         {
             if (_durationRungCache.TryGetValue(track.TrackId, out var cached))
             {
-                _logger?.Debug("RecordingLookup", "[TrackDuration] \"{0}\" -- qdur query cache hit, no new API call.", track.TrackName);
+                int observedMsForLog = (int)Math.Round(track.Duration!.Value.TotalMilliseconds);
+                var describedUrl = _client.DescribeSearchRecordingByTitleAndDurationUrl(track.TrackName, observedMsForLog, _config.QdurToleranceBuckets);
+                _logger?.Info("RecordingLookup", "[TrackDuration] \"{0}\"", track.TrackName);
+                _logger?.Info("RecordingLookup", "  GET https://musicbrainz.emby.tv/ws/2/{0}", describedUrl);
+                _logger?.Debug("RecordingLookup", "  -> qdur query cache hit, no new API call.");
                 return cached;
             }
 
