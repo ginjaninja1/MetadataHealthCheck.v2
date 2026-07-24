@@ -74,9 +74,17 @@ namespace MetadataHealthCheck.v2.Core.Model
     /// </summary>
     public class ScoringConfig
     {
-        public double AutoAcceptThreshold { get; set; } = 4.0;
+        // Lowered 2026-07-23 (settled directive, per real-world API-cost concern
+        // outweighing marginal accuracy gain): a single Tier2 (track+artist, no
+        // album) confirmation with no competing candidate is now sufficient on its
+        // own to auto-accept and stop further sampling -- was 4.0/2.0, requiring the
+        // full rung ladder (up to hundreds of MusicBrainz calls on high-collision
+        // names) to be exhausted before any decision could be reached. This is a
+        // deliberate, permanent lowering of the bar for every artist resolved via
+        // Audio's Artist bucket, not a per-case exception.
+        public double AutoAcceptThreshold { get; set; } = 1.5;
         public double AutoRejectThreshold { get; set; } = -3.0;
-        public double MinMarginOverRunnerUp { get; set; } = 2.0;
+        public double MinMarginOverRunnerUp { get; set; } = 1.5;
         public string Version { get; set; } = "phase2-default";
 
         public CandidateGenerationConfig CandidateGeneration { get; set; } = new();
