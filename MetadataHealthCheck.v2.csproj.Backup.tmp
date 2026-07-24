@@ -39,7 +39,6 @@
 		<Compile Remove="SmokeTest/**/*.cs" />
 		<Compile Remove="SandboxValidation/**/*.cs" />
 		<Compile Remove="SQLitePCLPrettyShim/**/*.cs" />
-		<Compile Remove="BatchHarness/**/*.cs" />
 	</ItemGroup>
 	<ItemGroup>
 	  <Compile Remove="Resolvers\MusicBrainz\Evidence\CorroborationTierEvidenceCollector.cs" />
@@ -52,10 +51,6 @@
 		<None Update="V2Specification.md">
 			<SubType>Component</SubType>
 		</None>
-	</ItemGroup>
-
-	<ItemGroup>
-	  <Folder Include="BatchHarness\" />
 	</ItemGroup>
 
 </Project>
