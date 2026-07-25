@@ -86,6 +86,8 @@ var scoringConfig = new ScoringConfig(); // shared: read-only, safe across worke
 var rows = new System.Collections.Concurrent.ConcurrentBag<BatchResultRow>();
 var overallStopwatch = Stopwatch.StartNew();
 var completed = 0;
+var consoleLock = new object();
+var errored = 0;
 
 await Parallel.ForEachAsync(
     artists,
@@ -125,9 +127,27 @@ await Parallel.ForEachAsync(
         }
 
         rows.Add(row);
+        if (row.Error != null) Interlocked.Increment(ref errored);
         var done = Interlocked.Increment(ref completed);
-        if (done % 25 == 0 || done == artists.Count)
-            Console.WriteLine($"  ... {done}/{artists.Count} artists processed ({overallStopwatch.Elapsed:mm\\:ss} elapsed)");
+
+        // In-place progress bar, refreshed on every completion. Guarded by a
+        // simple lock rather than left to race -- concurrent Console.Write calls
+        // interleaving mid-line would produce garbled output, and the
+        // performance cost of a lock here is irrelevant next to a real HTTP
+        // round-trip per artist.
+        lock (consoleLock)
+        {
+            var pct = artists.Count == 0 ? 100.0 : 100.0 * done / artists.Count;
+            var barWidth = 30;
+            var filled = (int)(barWidth * pct / 100.0);
+            var bar = new string('#', filled) + new string('-', barWidth - filled);
+            var elapsed = overallStopwatch.Elapsed;
+            var rate = done / Math.Max(elapsed.TotalSeconds, 0.001);
+            var etaSeconds = rate > 0 ? (artists.Count - done) / rate : 0;
+            var eta = TimeSpan.FromSeconds(etaSeconds);
+            Console.Write($"\r  [{bar}] {pct,5:F1}%  {done}/{artists.Count}  elapsed {elapsed:mm\\:ss}  ETA {eta:mm\\:ss}  errors={errored}   ");
+        }
+        if (done == artists.Count) Console.WriteLine(); // move off the progress line once finished
 
         await Task.CompletedTask;
     });
