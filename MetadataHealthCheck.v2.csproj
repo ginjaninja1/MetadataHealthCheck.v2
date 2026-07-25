@@ -12,17 +12,21 @@
     still be exercised and tested here. See Project Log "Evidence Log" for
     detail. When building for real deployment (i.e. anywhere with normal
     NuGet access), build THIS project directly - no shim involved.
+	
   -->
 	<PropertyGroup>
 		<TargetFramework>netstandard2.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
 		<Nullable>enable</Nullable>
 		<LangVersion>latest</LangVersion>
+		<DefaultItemExcludes>$(DefaultItemExcludes);SmokeTest/**;BatchHarness/**;SandboxValidation/**;SQLitePCLPrettyShim/**</DefaultItemExcludes>
+		<NoWarn>$(NoWarn);CS1705</NoWarn>
 	</PropertyGroup>
 
 	<ItemGroup>
 		<PackageReference Include="mediabrowser.server.core" Version="4.9.1.90" />
 		<PackageReference Include="SQLitePCL.pretty.core" Version="1.2.2" />
+		<PackageReference Include="System.Memory" Version="4.6.0" />
 	</ItemGroup>
 
 	<!--

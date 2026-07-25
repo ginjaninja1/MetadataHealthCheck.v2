@@ -3,7 +3,7 @@
 	<ItemGroup>
 		<ProjectReference Include="..\MetadataHealthCheck.v2.csproj" />
 		<!-- Reuses SmokeTest's InMemoryMatchRepository (a fake, in-memory IMatchRepository
-		     that sidesteps the real SQLite-backed repository -- see that file's own doc
+		     that sidesteps the real SQLite-backed repository; see that file's own doc
 		     comment for why) rather than duplicating it here. -->
 		<ProjectReference Include="..\SmokeTest\SmokeTest.csproj" />
 	</ItemGroup>
