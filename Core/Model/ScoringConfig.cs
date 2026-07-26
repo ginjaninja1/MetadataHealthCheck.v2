@@ -53,18 +53,49 @@ namespace MetadataHealthCheck.v2.Core.Model
             new NameNormalizationRule { Pattern = @"[^\w\s]", Replacement = "" },
         };
 
-        // Added 2026-07-18: which MusicBrainz artist-relationship type-ids count as
-        // "this is really the same identity" for RelationshipMbids purposes. Seeded
-        // with only "is person" (dd9886f2-1dfe-4270-97db-283f6839a666), confirmed via
-        // a real two-artist round trip (Del Serino <-> Cirino Colacrai) to be
-        // direction-agnostic. Configurable list per Nick's direction -- other MB
-        // relationship types (e.g. "member of band") must NOT be added here without a
-        // deliberate decision, since they mean something structurally different
-        // (a person belongs to a group, not "is the same identity as").
-        public List<string> ValidArtistRelationshipTypeIds { get; set; } = new()
+        // Added 2026-07-18, restructured 2026-07-26: which MusicBrainz artist-relationship
+        // type-ids are admitted onto a candidate at all (Candidate.RelationshipMbids),
+        // each tagged with a Classification. Every admitted type is treated as EQUAL
+        // WEIGHT for any onward/scoring logic -- the classification exists ONLY so the
+        // fold pass (ArtistStrategy's same-identity dedup) can tell "is person" apart
+        // from "member of band". Fold must only ever act on Classification==Identity:
+        // a person and a real person they perform as are the same real-world identity
+        // (fold-eligible); a person and a group they belong to are not (never fold-eligible,
+        // regardless of any future weight/scoring decision). Extend this list -- and
+        // ArtistRelationshipClassification, if a genuinely new kind of relationship shows
+        // up -- rather than reusing Identity for something that isn't "same identity".
+        public List<ArtistRelationshipTypeConfig> ValidArtistRelationshipTypes { get; set; } = new()
         {
-            "dd9886f2-1dfe-4270-97db-283f6839a666", // "is person"
+            new ArtistRelationshipTypeConfig
+            {
+                TypeId = "dd9886f2-1dfe-4270-97db-283f6839a666", // "is person"
+                Classification = ArtistRelationshipClassification.Identity,
+            },
+            // Added 2026-07-26 per Nick's direction: treated identically to any other
+            // admitted relationship for scoring/rung purposes for now -- no dedicated
+            // weight or nuance yet, revisit only if evidence shows a problem. Excluded
+            // from fold solely via its Classification, not via a separate list.
+            new ArtistRelationshipTypeConfig
+            {
+                TypeId = "5be4c609-9afa-4ea0-910b-12ffb71e3821", // "member of band"
+                Classification = ArtistRelationshipClassification.GroupMembership,
+            },
         };
+    }
+
+    // Added 2026-07-26. Deliberately just two values for now -- Identity is the only
+    // classification fold is allowed to act on; everything else is GroupMembership
+    // until a genuinely distinct third kind of relationship shows up.
+    public enum ArtistRelationshipClassification
+    {
+        Identity,
+        GroupMembership,
+    }
+
+    public class ArtistRelationshipTypeConfig
+    {
+        public string TypeId { get; set; } = "";
+        public ArtistRelationshipClassification Classification { get; set; }
     }
 
     /// <summary>

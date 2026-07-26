@@ -157,11 +157,20 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
             // candidate's relationships are known, before any candidate is handed to
             // the sampler.
             var finalCandidates = new List<Candidate>();
-            var relationshipNamesByCandidate = new List<IReadOnlyList<(string Name, string Mbid)>>();
+            var relationshipNamesByCandidate = new List<IReadOnlyList<(string Name, string Mbid, ArtistRelationshipClassification Classification)>>();
+            // Identity-only projection, indexed the same as finalCandidates/ordered --
+            // exists solely for the fold pass below. Candidate.RelationshipMbids (built
+            // just below) deliberately keeps ALL admitted classifications as one
+            // equal-weight list for any onward/scoring use.
+            var identityRelationshipMbidsByCandidate = new List<IReadOnlyList<string>>();
             foreach (var (result, tier) in ordered)
             {
                 var relationships = FetchValidRelationships(result.Mbid, result.Name, cgConfig);
                 relationshipNamesByCandidate.Add(relationships);
+                identityRelationshipMbidsByCandidate.Add(
+                    relationships.Where(r => r.Classification == ArtistRelationshipClassification.Identity)
+                                 .Select(r => r.Mbid)
+                                 .ToList());
 
                 finalCandidates.Add(new Candidate
                 {
@@ -188,8 +197,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                 {
                     if (folded[j]) continue;
 
-                    var linked = finalCandidates[i].RelationshipMbids.Contains(finalCandidates[j].TargetId)
-                              || finalCandidates[j].RelationshipMbids.Contains(finalCandidates[i].TargetId);
+                    var linked = identityRelationshipMbidsByCandidate[i].Contains(finalCandidates[j].TargetId)
+                              || identityRelationshipMbidsByCandidate[j].Contains(finalCandidates[i].TargetId);
                     if (!linked) continue;
 
                     var tierI = ordered[i].Tier;
@@ -246,27 +255,32 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
 
         // Eager fetch, per candidate, for every admitted candidate (Nick's confirmed
         // directive -- not lazy/sampler-order). Filters to
-        // ValidArtistRelationshipTypeIds ("is person" only, seeded); logs each
-        // relation's admit/drop decision the same way SearchArtist's own admission
-        // gate is logged above. Returns both name and MBID per admitted relation --
-        // the candidate summary log needs the name, Candidate.RelationshipMbids
-        // (built by the caller) only ever needed the MBID.
-        private IReadOnlyList<(string Name, string Mbid)> FetchValidRelationships(string candidateMbid, string candidateName, CandidateGenerationConfig cgConfig)
+        // ValidArtistRelationshipTypes (now "is person" + "member of band", each
+        // tagged with a Classification -- 2026-07-26); logs each relation's
+        // admit/drop decision the same way SearchArtist's own admission gate is
+        // logged above. Returns name, MBID, and Classification per admitted
+        // relation -- Classification exists ONLY so the fold pass below can filter
+        // to same-identity relations; Candidate.RelationshipMbids (built by the
+        // caller) still collapses all admitted types into one equal-weight list.
+        private IReadOnlyList<(string Name, string Mbid, ArtistRelationshipClassification Classification)> FetchValidRelationships(string candidateMbid, string candidateName, CandidateGenerationConfig cgConfig)
         {
             var relations = _client.GetArtistRelationships(candidateMbid);
             if (relations.Count == 0)
-                return Array.Empty<(string, string)>();
+                return Array.Empty<(string, string, ArtistRelationshipClassification)>();
 
             _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" -- fetching artist-rels...", candidateMbid, candidateName);
 
-            var validIds = new HashSet<string>(cgConfig.ValidArtistRelationshipTypeIds, StringComparer.OrdinalIgnoreCase);
-            var admitted = new List<(string Name, string Mbid)>();
+            var validTypes = cgConfig.ValidArtistRelationshipTypes
+                .GroupBy(t => t.TypeId, StringComparer.OrdinalIgnoreCase)
+                .ToDictionary(g => g.Key, g => g.First().Classification, StringComparer.OrdinalIgnoreCase);
+
+            var admitted = new List<(string Name, string Mbid, ArtistRelationshipClassification Classification)>();
             foreach (var rel in relations)
             {
-                if (validIds.Contains(rel.RelationshipTypeId))
+                if (validTypes.TryGetValue(rel.RelationshipTypeId, out var classification))
                 {
-                    _logger?.Info("ArtistCandidateGen", "    relation type=\"{0}\" -> \"{1}\" [{2}] -- ADMITTED as performs-as.", rel.RelationshipType, rel.ArtistName, rel.ArtistMbid);
-                    admitted.Add((rel.ArtistName, rel.ArtistMbid));
+                    _logger?.Info("ArtistCandidateGen", "    relation type=\"{0}\" -> \"{1}\" [{2}] -- ADMITTED as {3}.", rel.RelationshipType, rel.ArtistName, rel.ArtistMbid, classification);
+                    admitted.Add((rel.ArtistName, rel.ArtistMbid, classification));
                 }
                 else
                 {
