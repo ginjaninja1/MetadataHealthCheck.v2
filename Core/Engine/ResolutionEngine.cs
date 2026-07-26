@@ -62,6 +62,21 @@ namespace MetadataHealthCheck.v2.Core.Engine
                 _logger);
 
             var decision = sampler.Resolve(artist, candidates, _scoringConfig, _repository, context);
+
+            // See ArtistStrategy.cs's fold-pass doc comment: this rule is on
+            // probation, so any actual fold forces needs_review regardless of
+            // what the LLR/margin math produced -- checked BEFORE the
+            // auto-accept identity-cache write below, so a folded auto-accept
+            // is never cached as confirmed.
+            if (context.CandidateFoldOccurred && decision.Status != "needs_review")
+            {
+                _logger.Info("Engine",
+                    "Overriding decision status '{0}' -> 'needs_review' for {1}: candidate fold occurred this run. {2}",
+                    decision.Status, artist.DisplayName, string.Join(" ", context.FoldNotes));
+                decision.Status = "needs_review";
+                decision.DecisionReason = "forced_needs_review_candidate_fold";
+            }
+
             _repository.SaveMatchResult(decision);
 
             if (decision.Status == "auto_accept")

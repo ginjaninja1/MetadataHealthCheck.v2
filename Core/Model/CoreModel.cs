@@ -109,6 +109,11 @@ namespace MetadataHealthCheck.v2.Core.Model
         public string ScoringConfigVersion { get; set; } = "";     // traceability
         public DateTime DecidedAt { get; set; }
         public string DecidedBy { get; set; } = "system";           // "system" | Emby user id
+        // Added: set only when the decision gate's normal status is overridden
+        // for a reason outside the usual LLR/margin math (e.g. a candidate fold
+        // -- see ArtistStrategy.cs). Null in the ordinary case; existing
+        // consumers that don't check it are unaffected.
+        public string? DecisionReason { get; set; }
     }
 
     public class ResolutionContext
@@ -116,5 +121,13 @@ namespace MetadataHealthCheck.v2.Core.Model
         public CancellationToken CancellationToken { get; set; }
         public IProgress<double>? Progress { get; set; }
         public string RunId { get; set; } = Guid.NewGuid().ToString("N");
+        // Added: set by candidate-generation strategies (currently ArtistStrategy)
+        // when two admitted candidates are folded into one because MusicBrainz's
+        // own artist-relationship data says they're the same real-world identity.
+        // ResolutionEngine reads this after the decision gate runs to force
+        // needs_review while this rule is on probation -- see ArtistStrategy.cs's
+        // fold-pass doc comment for the full rationale.
+        public bool CandidateFoldOccurred { get; set; }
+        public List<string> FoldNotes { get; set; } = new();
     }
 }

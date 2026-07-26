@@ -131,3 +131,6 @@ Project Log.
   evidence breaks 4 known assertions (Gus Black + 3 Florence variants) that
   grep the log for that literal string. Not fixed — smoke testing is
   paused (Decisions.md).
+
+
+"When two identity records are linked via a symmetric 'is the same real-world entity' relationship, don't use the relationship's own descriptive name/label as a discriminating signal for which record is canonical — that field is often definitionally derived from one side of the link and will misleadingly appear to match both directions. Prefer an independent signal (e.g. how well each record's own name/alias data matches the external query) instead."

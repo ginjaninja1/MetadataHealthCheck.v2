@@ -53,6 +53,39 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
     ///
     /// Strategy B (§5.3): used when no own anchor (Strategy A) and, in later
     /// phases, no borrowed anchor (Strategy C) is available.
+    ///
+    /// ADDED (candidate identity fold, on probation): when two admitted candidates
+    /// are linked by an "is person"/"performs as" relationship (the same
+    /// relationship data already fetched in step 4 above), they represent the
+    /// same real-world identity, not two competing hypotheses -- MusicBrainz
+    /// itself says so. Without folding, both independently accumulate the exact
+    /// same recording-relationship evidence (since each candidate's own
+    /// RelationshipMbids match-set includes the other), producing a false
+    /// LLR=LLR tie between "two candidates" that are actually one person,
+    /// which can suppress a correct auto-accept by making the real margin look
+    /// like zero.
+    ///
+    /// Fold rule (settled after ruling out several alternatives -- see
+    /// EvidenceLog.md for the general principle this produced): the candidate
+    /// whose own name/alias tier (Name > Alias > Neither -- the same
+    /// ClassifyMatchTier already computed for sort order) is higher survives;
+    /// the other is dropped from the candidate list entirely (no data merge
+    /// needed -- the survivor's RelationshipMbids already contains the dropped
+    /// candidate's MBID, which is what made the fold decision possible in the
+    /// first place). Equal tiers -> do NOT fold; both candidates are left
+    /// independent, exactly as before this change. Explicitly NOT used as a
+    /// signal: the relationship's own descriptive name field -- for "is person"
+    /// relationships that field is definitionally derived from one side of the
+    /// link, so it can appear to match the query from BOTH directions and can't
+    /// discriminate anything (confirmed against a real case before ruling it
+    /// out, not assumed).
+    ///
+    /// Because this rule is new and not yet validated against volume, any
+    /// actual fold forces the final decision to needs_review regardless of what
+    /// the LLR/margin math would otherwise produce -- see ResolutionEngine.cs,
+    /// which reads ResolutionContext.CandidateFoldOccurred after the decision
+    /// gate runs. This override is meant to be temporary, pending enough
+    /// reviewed real cases to trust the rule -- revisit once that's true.
     /// </summary>
     public class ArtistStrategy : ICandidateGenerationStrategy<EmbyArtist>
     {
@@ -143,6 +176,51 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                 });
             }
 
+            // FOLD PASS (see class doc comment for full rationale): drop the
+            // lower-tier candidate of any pair linked via an "is person"/
+            // "performs as" relationship -- they're the same real-world
+            // identity, not two competitors. Equal-tier pairs are left alone.
+            var folded = new bool[finalCandidates.Count];
+            for (int i = 0; i < finalCandidates.Count; i++)
+            {
+                if (folded[i]) continue;
+                for (int j = i + 1; j < finalCandidates.Count; j++)
+                {
+                    if (folded[j]) continue;
+
+                    var linked = finalCandidates[i].RelationshipMbids.Contains(finalCandidates[j].TargetId)
+                              || finalCandidates[j].RelationshipMbids.Contains(finalCandidates[i].TargetId);
+                    if (!linked) continue;
+
+                    var tierI = ordered[i].Tier;
+                    var tierJ = ordered[j].Tier;
+
+                    if (tierI == tierJ)
+                    {
+                        _logger?.Info("ArtistCandidateGen",
+                            "  [{0}] \"{1}\" (tier={2}) and [{3}] \"{4}\" (tier={5}) are linked via an is-person relationship, but tiers are equal -- NOT folding, both remain independent candidates.",
+                            finalCandidates[i].TargetId, ordered[i].Result.Name, tierI,
+                            finalCandidates[j].TargetId, ordered[j].Result.Name, tierJ);
+                        continue;
+                    }
+
+                    // Lower enum value = higher tier (Name=0 beats Alias=1 beats Neither=2).
+                    int survivorIdx = tierI < tierJ ? i : j;
+                    int droppedIdx = tierI < tierJ ? j : i;
+                    folded[droppedIdx] = true;
+
+                    var note = string.Format(
+                        "Folded [{0}] \"{1}\" (tier={2}) into [{3}] \"{4}\" (tier={5}) -- linked via is-person relationship, same real-world identity.",
+                        finalCandidates[droppedIdx].TargetId, ordered[droppedIdx].Result.Name, ordered[droppedIdx].Tier,
+                        finalCandidates[survivorIdx].TargetId, ordered[survivorIdx].Result.Name, ordered[survivorIdx].Tier);
+                    _logger?.Info("ArtistCandidateGen", "  {0}", note);
+                    context.CandidateFoldOccurred = true;
+                    context.FoldNotes.Add(note);
+
+                    if (droppedIdx == i) break; // i itself was dropped -- stop comparing it against later j's
+                }
+            }
+
             _logger?.Info("ArtistCandidateGen", "================================================================");
             _logger?.Info("ArtistCandidateGen", "Artist Candidate Summary");
             _logger?.Info("ArtistCandidateGen", "================================================================");
@@ -153,14 +231,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                 var relText = relationshipNamesByCandidate[i].Count == 0
                     ? "(none)"
                     : string.Join(", ", relationshipNamesByCandidate[i].Select(r => r.Name));
-                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} aliases=[{3}] relationships=[{4}]",
-                    result.Mbid, result.Name, result.Score, aliasText, relText);
+                var foldedSuffix = folded[i] ? "  [FOLDED -- excluded from sampling, see fold pass log above]" : "";
+                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} aliases=[{3}] relationships=[{4}]{5}",
+                    result.Mbid, result.Name, result.Score, aliasText, relText, foldedSuffix);
             }
             _logger?.Info("ArtistCandidateGen", "================================================================");
 
-            foreach (var candidate in finalCandidates)
+            for (int i = 0; i < finalCandidates.Count; i++)
             {
-                yield return candidate;
+                if (!folded[i])
+                    yield return finalCandidates[i];
             }
         }
 
