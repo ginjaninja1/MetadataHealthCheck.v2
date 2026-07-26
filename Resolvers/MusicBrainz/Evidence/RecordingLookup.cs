@@ -74,7 +74,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // candidate, when ConfirmedViaRelationship is true (null otherwise). Carried
         // here, on the confirmation result itself, so callers (RecordingCorroboration-
         // EvidenceCollector) don't need a second GetRelationships call/scan just to
-        // find out what already confirmed the candidate inside ConfirmAtRung -- that
+        // find out what already confirmed the candidate inside the confirmation walk -- that
         // duplication is exactly the vestigial-opportunistic-block confusion flagged
         // 2026-07-18 (a second scan re-deriving what the authorized confirmation path
         // already knew, then mislabeling it as "not required for the decision" when it
@@ -87,10 +87,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     }
 
     /// <summary>
-    /// Shared, memoized per-(candidate, track) recording lookup (§7.2 C3/C4).
-    /// Used both by SoftBucketStrategy (Stage 2 per-candidate confirmation, §5.3) and
-    /// by per-observation evidence collectors (WorkRelationship, CorroborationTier)
-    /// that need to confirm a candidate against a specific track.
+    /// Shared recording lookup (§7.2 C3/C4) used by the multi-candidate, round-based
+    /// entry point (LookupRounds) -- see its own doc comment further down. The
+    /// original single-candidate entry point (Lookup/Resolve, one call per candidate)
+    /// was removed 2026-07-26: its only remaining callers were the three dormant
+    /// evidence collectors (WorkRelationship/CorroborationTier/RecordingRelationship),
+    /// all excluded from the build, so it was dead code.
     ///
     /// Fallback ladder (§7.2/§5.4), as of 2026-07-19: track+artist+album ->
     /// track+artist -> track+album -> title+qdur -> track alone. TrackArtist and
@@ -145,8 +147,6 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         private readonly IMusicBrainzApiClient _client;
         private readonly ScoringConfig _config;
         private readonly MetadataHealthCheck.v2.Diagnostics.StructuredLogger? _logger;
-        private readonly Dictionary<(string CandidateMbid, string TrackId), RecordingLookupResult> _cache = new();
-
         // new field, added next to _durationRungCache:
         // Raw-search cache, independent of candidateMbid: the query text for the
         // name/album rungs depends only on the track and which rung is being tried,
@@ -180,185 +180,6 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             _logger = logger;
         }
 
-        /// <param name="candidateMbid">The candidate's MBID being confirmed.</param>
-        /// <param name="track">The observed track (carries TrackName/AlbumName/TrackId/Duration).</param>
-        /// <param name="artistNames">
-        /// The Emby-tagged credited performer name(s) for this credit, used on rungs 1
-        /// and 2 only as an OR-group, never reduced to a single name -- a multi-artist
-        /// track's credits are all tried together in one query. Pass null/empty if
-        /// unavailable -- rungs 1/2 are then skipped, equivalent to starting at rung 3
-        /// (track+album).
-        /// </param>
-        /// <param name="relationshipMbids">
-        /// Added 2026-07-18: the candidate's own RelationshipMbids (performs-as/is-person
-        /// identities picked up at the artist-search stage). Checked, alongside
-        /// candidateMbid itself, during the relationship-scan confirmation path -- see
-        /// class doc comment. Optional/empty for callers that don't have this (e.g.
-        /// existing tests), in which case relationship-scan confirmation only ever
-        /// matches candidateMbid directly.
-        /// </param>
-        public RecordingLookupResult Lookup(string candidateMbid, EmbyTrackCredit track, IEnumerable<string>? artistNames, IEnumerable<string>? relationshipMbids = null)
-        {
-            var key = (candidateMbid, track.TrackId);
-            if (_cache.TryGetValue(key, out var cached))
-            {
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- cache hit (rung already resolved: {2}), no new API call.", candidateMbid, track.TrackName, cached.RungReached);
-                return cached;
-            }
-
-            var names = (artistNames ?? Enumerable.Empty<string>()).ToList();
-            var result = Resolve(candidateMbid, track, names, (relationshipMbids ?? Enumerable.Empty<string>()).ToList());
-            _cache[key] = result;
-            return result;
-        }
-
-        private RecordingLookupResult Resolve(string candidateMbid, EmbyTrackCredit track, IReadOnlyList<string> artistNames, IReadOnlyList<string> relationshipMbids)
-        {
-            if (artistNames.Count > 0)
-            {
-                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, SearchRecordingCached(track, track.AlbumName, artistNames, RecordingLookupRung.TrackArtistAlbum), track.Duration, RecordingLookupRung.TrackArtistAlbum);
-                if (evaluated != null)
-                {
-                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+artist+album){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtistAlbum, ConfirmationSuffix(evaluated));
-                    return evaluated;
-                }
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track+artist+album) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtistAlbum);
-            }
-
-            if (artistNames.Count > 0)
-            {
-                // Added 2026-07-19: rescues observations ...
-                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, SearchRecordingCached(track, null, artistNames, RecordingLookupRung.TrackArtist), track.Duration, RecordingLookupRung.TrackArtist);
-                if (evaluated != null)
-                {
-                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+artist, no album){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtist, ConfirmationSuffix(evaluated));
-                    return evaluated;
-                }
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track+artist, no album) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackArtist);
-            }
-
-            {
-                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, SearchRecordingCached(track, track.AlbumName, null, RecordingLookupRung.TrackAlbum), track.Duration, RecordingLookupRung.TrackAlbum);
-                if (evaluated != null)
-                {
-                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track+album){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackAlbum, ConfirmationSuffix(evaluated));
-                    return evaluated;
-                }
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track+album) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackAlbum);
-            }
-
-            if (track.Duration.HasValue)
-            {
-                // Added 2026-07-19: title+qdur, tried once both name-based rungs
-                // (TrackArtist, TrackAlbum) have failed -- i.e. neither the artist
-                // nor the album string was usable. Ordered by artist-recording-
-                // frequency within the qdur-narrowed set, not richness -- see
-                // ConfirmAtRungByFrequency's own doc comment.
-                var evaluated = ConfirmAtRungByFrequency(candidateMbid, relationshipMbids, track);
-                if (evaluated != null)
-                {
-                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (title+qdur){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackDuration, ConfirmationSuffix(evaluated));
-                    return evaluated;
-                }
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (title+qdur) missed, falling through.", candidateMbid, track.TrackName, RecordingLookupRung.TrackDuration);
-            }
-
-            {
-                var evaluated = ConfirmAtRung(candidateMbid, relationshipMbids, SearchRecordingCached(track, null, null, RecordingLookupRung.TrackOnly), track.Duration, RecordingLookupRung.TrackOnly);
-                if (evaluated != null)
-                {
-                    _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- CONFIRMED at rung {2} (track alone){3}.", candidateMbid, track.TrackName, RecordingLookupRung.TrackOnly, ConfirmationSuffix(evaluated));
-                    return evaluated;
-                }
-                _logger?.Debug("RecordingLookup", "[{0}] \"{1}\" -- rung {2} (track alone) missed.", candidateMbid, track.TrackName, RecordingLookupRung.TrackOnly);
-            }
-
-            _logger?.Info("RecordingLookup", "[{0}] \"{1}\" -- NOT CONFIRMED at any rung of the ladder.", candidateMbid, track.TrackName);
-            return new RecordingLookupResult { Recording = null, RungReached = RecordingLookupRung.NotFound };
-        }
-
-        // Added 2026-07-18: makes the top-level "CONFIRMED at rung X" line honest about
-        // WHICH path actually won (performer-identity vs relationship-scan), and if
-        // relationship, what type/level -- this is the single line meant to settle
-        // "did the relationship-confirmation path actually fire" at a glance, without
-        // cross-referencing the more detailed per-recording relationship-scan log
-        // further down (see ConfirmAtRung's own "MATCH:" line for the specific
-        // matching MBID and whether it was the candidate's own vs. a RelationshipMbid).
-        private static string ConfirmationSuffix(RecordingLookupResult result)
-        {
-            if (!result.ConfirmedViaRelationship || result.ConfirmingRelationship == null)
-                return "";
-
-            var rel = result.ConfirmingRelationship;
-            return $" via relationship scan: {rel.RelationshipType}({rel.Level}) -- not performer-identity";
-        }
-
-        // Replaces the old FindForCandidate (first-match-by-ArtistMbid) + EvaluateHit
-        // pair (2026-07-18 widening). For one rung's raw recording list: gate on
-        // duration, sort survivors by richness, then walk in that order checking EACH
-        // recording for performer-identity confirmation (as before, still subject to
-        // the NameDistance trust check) OR relationship-scan confirmation (new) --
-        // stopping at the first one either check confirms. Walking every
-        // duration-plausible recording (not just the first, as the old
-        // ArtistMbid==candidate filter effectively did) is necessary now: without a
-        // performer-name filter narrowing the set, the first recording returned is no
-        // longer reliably the right one, so a richness-first walk order plus an
-        // early stop on confirmation is what keeps this both accurate and cheap.
-        private RecordingLookupResult? ConfirmAtRung(string candidateMbid, IReadOnlyList<string> relationshipMbids, IReadOnlyList<MbRecordingResult> recordings, TimeSpan? observedDuration, RecordingLookupRung rung)
-        {
-            var survivors = ApplyDurationGate(recordings, observedDuration)
-                .OrderBy(r => RichnessRank(r))
-                .ToList();
-
-            foreach (var rec in survivors)
-            {
-                if (rec.ArtistMbid == candidateMbid)
-                {
-                    var candidateName = _client.GetArtistDisplayName(candidateMbid);
-                    var candidateAliases = _client.GetArtistAliases(candidateMbid);
-                    var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
-                    if (outcome == NameMatchOutcome.TooPoorToTrust)
-                        continue; // not this recording -- keep walking the rung, don't abandon it
-
-                    return new RecordingLookupResult
-                    {
-                        Recording = rec,
-                        RungReached = rung,
-                        MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
-                        ConfirmedViaRelationship = false,
-                    };
-                }
-
-                // Relationship-scan confirmation (2026-07-18): the candidate isn't the
-                // performer on this recording, but may still be confirmed via an exact
-                // MBID match anywhere in the recording's own relationship data. No
-                // NameDistance trust check here -- ArtistCreditText is the PERFORMER's
-                // name, not the candidate's, so that check isn't meaningful for this
-                // path; an exact relationship-MBID match is its own safety net.
-                _logger?.Info("RecordingLookup", "[{0}] recordingId={1} -- relationship scan for candidate confirmation (rung={2}).", candidateMbid, rec.RecordingId, rung);
-                var rels = _client.GetRelationships(rec.RecordingId);
-                var confirming = rels.FirstOrDefault(r => r.ArtistMbid == candidateMbid || relationshipMbids.Contains(r.ArtistMbid));
-                if (confirming != null)
-                {
-                    bool viaRelationshipMbid = confirming.ArtistMbid != candidateMbid;
-                    _logger?.Info("RecordingLookup", "[{0}] recordingId={1} -- MATCH: {2}({3}) = {4} ({5}).",
-                        candidateMbid, rec.RecordingId, confirming.RelationshipType, confirming.Level, confirming.ArtistMbid,
-                        viaRelationshipMbid ? "via candidate's RelationshipMbid" : "candidate's own MBID");
-
-                    return new RecordingLookupResult
-                    {
-                        Recording = rec,
-                        RungReached = rung,
-                        MatchedViaAlias = false,
-                        ConfirmedViaRelationship = true,
-                        ConfirmingRelationship = confirming,
-                    };
-                }
-            }
-
-            return null;
-        }
-
         // Cached per-track result of the qdur query: the raw duration-gate survivors
         // (there's no further gating to apply -- qdur already IS the duration
         // constraint) plus the artist-frequency tally built from them, computed once
@@ -382,20 +203,23 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             public string RoundDescription { get; set; } = "";
         }
 
-        // Added 2026-07-23: multi-candidate, round-based entry point -- replaces calling
-        // Lookup() once per candidate for callers (RecordingCorroborationEvidenceCollector)
-        // that need every live candidate checked jointly, stopping the moment a caller-side
-        // decision gate is satisfied. See IRoundBasedObservationEvidenceCollector's own doc
-        // comment for the motivating problem: a per-candidate Lookup() loop was triggering
-        // a full relationship-scan walk for EVERY candidate before any stopping decision
-        // ran at all. This is `yield return`-based throughout its private helpers -- a
-        // caller that stops enumerating early (foreach+break) means the next recording's
+        // Added 2026-07-23: multi-candidate, round-based entry point -- checks every
+        // still-pending candidate jointly, one rung at a time, stopping the moment a
+        // caller-side decision gate is satisfied. See IRoundBasedObservationEvidence-
+        // Collector's own doc comment for the motivating problem: an earlier
+        // per-candidate lookup loop was triggering a full relationship-scan walk for
+        // EVERY candidate before any stopping decision ran at all. This is
+        // `yield return`-based throughout its private helpers -- a caller that stops
+        // enumerating early (foreach+break) means the next recording's
         // GetRelationships call genuinely never fires, not merely that its result is
         // discarded.
         //
-        // Deliberately NOT memoized via _cache (that cache is single-candidate,
-        // single-track keyed) -- multi-candidate round results aren't a natural fit for
-        // that cache's shape, and this method's own per-rung raw-search calls already go
+        // The single-candidate Lookup()/Resolve() path (and its per-(candidate,track)
+        // cache) that predated this was removed 2026-07-26: its only remaining callers
+        // were WorkRelationshipEvidenceCollector/CorroborationTierEvidenceCollector/
+        // RecordingRelationshipEvidenceCollector, all three of which are excluded from
+        // the build (`<Compile Remove>` in the .csproj), so it was genuinely dead code.
+        // Not memoized -- this method's own per-rung raw-search calls already go
         // through SearchRecordingCached/_durationRungCache, which is where the real
         // duplicate-API-call saving lives.
         public IEnumerable<RecordingLookupRoundResult> LookupRounds(IReadOnlyList<string> candidateMbids, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate, EmbyTrackCredit track, IEnumerable<string>? artistNames)
@@ -403,34 +227,70 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             var names = (artistNames ?? Enumerable.Empty<string>()).ToList();
             var pending = new HashSet<string>(candidateMbids);
 
+            // Settled directive 2026-07-26 (same rule as the single-candidate Resolve()
+            // path): only advance to the next rung's query when THIS rung's raw search
+            // came back with zero recordings. If MusicBrainz returned recording(s) here,
+            // the search succeeded -- any pending candidate this rung's rounds don't
+            // confirm is a genuine non-match, not a reason to try a looser query, so we
+            // stop the whole ladder rather than falling through.
+
             if (names.Count > 0)
             {
-                foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtistAlbum, SearchRecordingCached(track, track.AlbumName, names, RecordingLookupRung.TrackArtistAlbum), track, pending, relationshipMbidsByCandidate))
+                var recordings = SearchRecordingCached(track, track.AlbumName, names, RecordingLookupRung.TrackArtistAlbum);
+                if (recordings.Count > 0)
                 {
-                    yield return round;
-                    if (pending.Count == 0) yield break;
+                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtistAlbum, recordings, track, pending, relationshipMbidsByCandidate))
+                    {
+                        yield return round;
+                        if (pending.Count == 0) yield break;
+                    }
+                    yield break;
                 }
-
-                foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtist, SearchRecordingCached(track, null, names, RecordingLookupRung.TrackArtist), track, pending, relationshipMbidsByCandidate))
-                {
-                    yield return round;
-                    if (pending.Count == 0) yield break;
-                }
+                _logger?.Debug("RecordingLookup", "[TrackArtistAlbum] \"{0}\" -- returned zero recordings, falling through.", track.TrackName);
             }
 
-            foreach (var round in RoundsForRung(RecordingLookupRung.TrackAlbum, SearchRecordingCached(track, track.AlbumName, null, RecordingLookupRung.TrackAlbum), track, pending, relationshipMbidsByCandidate))
+            if (names.Count > 0)
             {
-                yield return round;
-                if (pending.Count == 0) yield break;
+                var recordings = SearchRecordingCached(track, null, names, RecordingLookupRung.TrackArtist);
+                if (recordings.Count > 0)
+                {
+                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtist, recordings, track, pending, relationshipMbidsByCandidate))
+                    {
+                        yield return round;
+                        if (pending.Count == 0) yield break;
+                    }
+                    yield break;
+                }
+                _logger?.Debug("RecordingLookup", "[TrackArtist] \"{0}\" -- returned zero recordings, falling through.", track.TrackName);
+            }
+
+            {
+                var recordings = SearchRecordingCached(track, track.AlbumName, null, RecordingLookupRung.TrackAlbum);
+                if (recordings.Count > 0)
+                {
+                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackAlbum, recordings, track, pending, relationshipMbidsByCandidate))
+                    {
+                        yield return round;
+                        if (pending.Count == 0) yield break;
+                    }
+                    yield break;
+                }
+                _logger?.Debug("RecordingLookup", "[TrackAlbum] \"{0}\" -- returned zero recordings, falling through.", track.TrackName);
             }
 
             if (track.Duration.HasValue)
             {
-                foreach (var round in RoundsForDurationRung(track, pending, relationshipMbidsByCandidate))
+                var data = GetOrBuildDurationRungData(track);
+                if (data.Recordings.Count > 0)
                 {
-                    yield return round;
-                    if (pending.Count == 0) yield break;
+                    foreach (var round in RoundsForDurationRung(track, pending, relationshipMbidsByCandidate))
+                    {
+                        yield return round;
+                        if (pending.Count == 0) yield break;
+                    }
+                    yield break;
                 }
+                _logger?.Debug("RecordingLookup", "[TrackDuration] \"{0}\" -- returned zero recordings, falling through.", track.TrackName);
             }
 
             foreach (var round in RoundsForRung(RecordingLookupRung.TrackOnly, SearchRecordingCached(track, null, null, RecordingLookupRung.TrackOnly), track, pending, relationshipMbidsByCandidate))
@@ -447,9 +307,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // One rung's worth of rounds: a single cheap round (performer-credit, no API
         // call) covering every survivor at once, then one expensive round per surviving
         // recording (relationship scan), in richness order, each checked against every
-        // still-pending candidate. Mirrors ConfirmAtRung's gating/sorting/confirmation
-        // logic exactly -- this is the same confirmation rule, just re-shaped so multiple
-        // candidates share each API call instead of each candidate re-deriving it alone.
+        // still-pending candidate. Same gating/sorting/confirmation rule as every other
+        // rung, just re-shaped so multiple candidates share each API call instead of
+        // each candidate re-deriving it alone.
         private IEnumerable<RecordingLookupRoundResult> RoundsForRung(RecordingLookupRung rung, IReadOnlyList<MbRecordingResult> recordings, EmbyTrackCredit track, HashSet<string> pending, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate)
         {
             var survivors = ApplyDurationGate(recordings, track.Duration).OrderBy(r => RichnessRank(r)).ToList();
@@ -649,7 +509,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         }
 
         // The TrackDuration rung's confirmation walk (§7.2 "Bohemian Rhapsody" trace,
-        // artist-frequency proposal): unlike ConfirmAtRung's richness-ordered walk,
+        // artist-frequency proposal): unlike the other rungs' richness-ordered walk,
         // this orders the duration-narrowed result set by artist-recording-frequency
         // (which artist has the most recordings clustered at this title+duration --
         // a real cover is typically a one-off, while the correct artist for a

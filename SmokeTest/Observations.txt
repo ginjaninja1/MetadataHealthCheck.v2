@@ -36,30 +36,41 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
-ARTIST ff80fc2f936a429c86c586a7bb1610c9 "Declan Patrick MacManus"
-TRACK e0f7f7de555e82b7014a9260d1757763 "Alison"
-ALBUM 272159 "Acoustic"
-DURATION_MS 185055
-PROVIDERIDS MusicBrainzAlbumArtist=959cf5bf-ee29-4af6-a85a-0b480181d988,MusicBrainzArtist=959cf5bf-ee29-4af6-a85a-0b480181d988,MusicBrainzAlbum=84cd3aa7-55d8-4114-92be-18800688c0ed,MusicBrainzReleaseGroup=4d2d4563-56b8-3a8a-8df7-8d1bb172f29a,MusicBrainzTrack=586a8eb4-5527-3964-a8df-e5ec4d6e9159
-ALBUMARTIST "Everything but the Girl" mbid=959cf5bf-ee29-4af6-a85a-0b480181d988
-ARTIST "Everything but the Girl" mbid=959cf5bf-ee29-4af6-a85a-0b480181d988
-COMPOSER "Declan Patrick MacManus" mbid=4d3924ac-7dc4-4632-9058-553119d6b951
+ARTIST fc820db1e3d6426c83d359970309c6e8 "2D"
+TRACK 798e7b6b40efedb241f37bc6657d5f72 "Clint Eastwood (Phi Life Cypher version)"
+ALBUM 272563 "G Sides"
+DURATION_MS 292466
+PROVIDERIDS MusicBrainzAlbumArtist=e21857d5-3256-4547-afb3-4b6ded592596,MusicBrainzArtist=e21857d5-3256-4547-afb3-4b6ded592596,MusicBrainzAlbum=6d7d85c7-c6ee-47a1-94df-e78561e06099,MusicBrainzReleaseGroup=69d9be54-760f-3bdd-be18-45212db84bad,MusicBrainzTrack=ac0c2cc8-81d5-3e7f-bc14-5004962a0edc
+ALBUMARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+ARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+COMPOSER "2D" mbid=dd2f60c7-13c6-47af-ab16-218fe247f606
+COMPOSER "Del the Funky Homosapien" mbid=a31a5e0c-d37a-41a8-90d5-9e256a47d83b
+COMPOSER "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+COMPOSER "Murdoc Niccals" mbid=6ff7e6e2-f4bb-406a-aa4b-7afa615a389f
 
-TRACK 1cbfadc9d9fb6668de18e96d8b6e74eb "(I Don't Want to Go to) Chelsea"
-ALBUM 272023 "The Very Best of Elvis Costello"
-DURATION_MS 187559
-PROVIDERIDS MusicBrainzAlbumArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzArtist=0ffb6573-a98e-412e-aa01-0a580e9d8b06,MusicBrainzAlbum=0c8d19d9-9a89-4ca1-b06f-26a592123a50,MusicBrainzReleaseGroup=135e07a2-a283-361e-9ff1-977fcf4d1460,MusicBrainzTrack=c39a7a16-8626-3033-be7e-a1982c0252ed
-ALBUMARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
-ARTIST "Elvis Costello & The Attractions" mbid=0ffb6573-a98e-412e-aa01-0a580e9d8b06
-COMPOSER "Declan Patrick MacManus" mbid=4d3924ac-7dc4-4632-9058-553119d6b951
+TRACK 29257f0011add6c341c2d117de9609c4 "A Fistful of Peanuts"
+ALBUM 272566 "Laika Come Home"
+DURATION_MS 353266
+PROVIDERIDS MusicBrainzAlbumArtist=8df68f6c-40c0-4c9a-9343-ed949cb5ffcd/e21857d5-3256-4547-afb3-4b6ded592596,MusicBrainzArtist=8df68f6c-40c0-4c9a-9343-ed949cb5ffcd/e21857d5-3256-4547-afb3-4b6ded592596,MusicBrainzAlbum=2069dd65-55b2-4726-93f7-475fe3feaccf,MusicBrainzReleaseGroup=a8039d5a-9819-3f26-a47c-10a0d6eff0b3,MusicBrainzTrack=0c1676e0-9c2a-4c2f-ad32-011a66b57b51
+ALBUMARTIST "Spacemonkeyz" mbid=8df68f6c-40c0-4c9a-9343-ed949cb5ffcd
+ALBUMARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+ARTIST "Spacemonkeyz" mbid=8df68f6c-40c0-4c9a-9343-ed949cb5ffcd
+ARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+COMPOSER "2D" mbid=dd2f60c7-13c6-47af-ab16-218fe247f606
+COMPOSER "Del the Funky Homosapien" mbid=a31a5e0c-d37a-41a8-90d5-9e256a47d83b
+COMPOSER "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+COMPOSER "Murdoc Niccals" mbid=6ff7e6e2-f4bb-406a-aa4b-7afa615a389f
 
-TRACK 8a2aa32b25fd80f6e043aaa8162eb89d "Alison"
-ALBUM 270476 "The Best Chillout... Ever!"
-DURATION_MS 201787
-PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzAlbum=a7911680-922f-40dc-9125-9660ceb6741c,MusicBrainzReleaseGroup=da9674b4-0ea0-357b-81ee-fa85644b6807,MusicBrainzTrack=a533ba87-405c-3953-b51c-67aa84b9380d
-ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
-ARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
-COMPOSER "Declan Patrick MacManus" mbid=4d3924ac-7dc4-4632-9058-553119d6b951
+TRACK 86dcba8d3745c3bbf061cd1442f6f878 "Clint Eastwood"
+ALBUM 272564 "Gorillaz"
+DURATION_MS 342360
+PROVIDERIDS MusicBrainzAlbumArtist=e21857d5-3256-4547-afb3-4b6ded592596,MusicBrainzArtist=e21857d5-3256-4547-afb3-4b6ded592596,MusicBrainzAlbum=43018d17-df0a-468f-9f23-2fc005f2056b,MusicBrainzReleaseGroup=b0405d2a-5720-340a-bb56-4e135d031cc2,MusicBrainzTrack=bf71ba93-7337-4be0-b57f-db76b6a9ae33
+ALBUMARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+ARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+COMPOSER "2D" mbid=dd2f60c7-13c6-47af-ab16-218fe247f606
+COMPOSER "Del the Funky Homosapien" mbid=a31a5e0c-d37a-41a8-90d5-9e256a47d83b
+COMPOSER "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+COMPOSER "Murdoc Niccals" mbid=6ff7e6e2-f4bb-406a-aa4b-7afa615a389f
 
 
 
