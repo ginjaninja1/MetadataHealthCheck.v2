@@ -46,7 +46,7 @@ using SmokeTest;
 
 if (args.Length < 2)
 {
-    Console.WriteLine("Usage: BatchHarness <observations.txt path> <groundtruth.csv path> [outputCsvPath] [maxConcurrency]");
+    Console.WriteLine("Usage: BatchHarness <observations.txt path> <groundtruth.csv path> [outputCsvPath] [maxConcurrency] [maxRows]");
     return 1;
 }
 
@@ -60,6 +60,7 @@ var outputCsvPath = args.Length > 2 ? args[2] : "batch-results.csv";
 // against measured throughput yet -- treat as a starting point, not a
 // verified optimum.
 var maxConcurrency = args.Length > 3 ? int.Parse(args[3], CultureInfo.InvariantCulture) : 8;
+var maxRows = args.Length > 4 ? int.Parse(args[4], CultureInfo.InvariantCulture) : (int?)null;
 
 if (!File.Exists(observationsPath))
 {
@@ -79,6 +80,10 @@ var reader = new TextFileEmbyLibraryReader(observationsPath);
 var provider = new EmbyArtistProvider(reader);
 var context = new ResolutionContext();
 var artists = provider.GetAll(context).ToList();
+if (maxRows.HasValue && maxRows.Value < artists.Count)
+{
+    artists = artists.Take(maxRows.Value).ToList();
+}
 Console.WriteLine($"Loaded {artists.Count} artist(s) from {observationsPath}.");
 Console.WriteLine($"Running with max concurrency = {maxConcurrency}.\n");
 
@@ -112,6 +117,7 @@ await Parallel.ForEachAsync(
             row.ChosenMbid = result.TargetId;
             row.Decision = result.Status;
             row.Confidence = result.Confidence;
+            row.Llr = result.Llr;
             row.Margin = result.Margin;
         }
         catch (Exception ex)

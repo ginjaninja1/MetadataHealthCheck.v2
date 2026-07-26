@@ -105,6 +105,7 @@ namespace MetadataHealthCheck.v2.Core.Model
         public string TargetId { get; set; } = "";
         public string Status { get; set; } = "";                  // auto_accept | auto_reject | needs_review | human_confirmed | human_rejected
         public double Confidence { get; set; }
+        public double Llr { get; set; }
         public double Margin { get; set; }                        // over runner-up candidate
         public string ScoringConfigVersion { get; set; } = "";     // traceability
         public DateTime DecidedAt { get; set; }
