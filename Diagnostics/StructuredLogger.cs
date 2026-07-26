@@ -6,9 +6,22 @@ namespace MetadataHealthCheck.v2.Diagnostics
     /// sink is wired once the exact "get a logger scoped by name" call is
     /// confirmed against a real Emby host (§15.1's listed unverified item,
     /// §20.4).
+    ///
+    /// Console output is optional (writeToConsole, default true) so callers
+    /// running many loggers concurrently against a single console -- e.g.
+    /// BatchHarness, one StructuredLogger per worker -- can suppress
+    /// Console.WriteLine while still keeping the in-memory Lines buffer for
+    /// later inspection (e.g. dumping a failing artist's trace on error).
     /// </summary>
     public class StructuredLogger
     {
+        private readonly bool _writeToConsole;
+
+        public StructuredLogger(bool writeToConsole = true)
+        {
+            _writeToConsole = writeToConsole;
+        }
+
         public List<string> Lines { get; } = new();
 
         public void Log(string level, string component, string message, params object[] args)
@@ -16,7 +29,7 @@ namespace MetadataHealthCheck.v2.Diagnostics
             var formatted = args.Length > 0 ? string.Format(message, args) : message;
             var line = $"[{level}] [{component}] {formatted}";
             Lines.Add(line);
-            Console.WriteLine(line);
+            if (_writeToConsole) Console.WriteLine(line);
         }
 
         public void Info(string component, string message, params object[] args) => Log("Info", component, message, args);

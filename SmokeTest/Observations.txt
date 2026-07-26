@@ -36,42 +36,30 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
-ARTIST 6dd048ecb3fb436386a4517697034579 "Dave Kelly"
-TRACK 7891b23025ddea9638202d96f990fb59 "Street Life"
-ALBUM 266557 "Now That's What I Call Music! 54"
-DURATION_MS 210520
-PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=0d85b9f2-802d-48bb-aa85-6a9668869053,MusicBrainzAlbum=27f68901-fc07-429a-b8b1-25f1c766e736,MusicBrainzReleaseGroup=3f6f797c-27cf-3393-8b4e-f5ff9c4ff9f8,MusicBrainzTrack=0d58504f-99e4-3499-a2a9-33f6443805b9
+ARTIST ff80fc2f936a429c86c586a7bb1610c9 "Declan Patrick MacManus"
+TRACK e0f7f7de555e82b7014a9260d1757763 "Alison"
+ALBUM 272159 "Acoustic"
+DURATION_MS 185055
+PROVIDERIDS MusicBrainzAlbumArtist=959cf5bf-ee29-4af6-a85a-0b480181d988,MusicBrainzArtist=959cf5bf-ee29-4af6-a85a-0b480181d988,MusicBrainzAlbum=84cd3aa7-55d8-4114-92be-18800688c0ed,MusicBrainzReleaseGroup=4d2d4563-56b8-3a8a-8df7-8d1bb172f29a,MusicBrainzTrack=586a8eb4-5527-3964-a8df-e5ec4d6e9159
+ALBUMARTIST "Everything but the Girl" mbid=959cf5bf-ee29-4af6-a85a-0b480181d988
+ARTIST "Everything but the Girl" mbid=959cf5bf-ee29-4af6-a85a-0b480181d988
+COMPOSER "Declan Patrick MacManus" mbid=4d3924ac-7dc4-4632-9058-553119d6b951
+
+TRACK 1cbfadc9d9fb6668de18e96d8b6e74eb "(I Don't Want to Go to) Chelsea"
+ALBUM 272023 "The Very Best of Elvis Costello"
+DURATION_MS 187559
+PROVIDERIDS MusicBrainzAlbumArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzArtist=0ffb6573-a98e-412e-aa01-0a580e9d8b06,MusicBrainzAlbum=0c8d19d9-9a89-4ca1-b06f-26a592123a50,MusicBrainzReleaseGroup=135e07a2-a283-361e-9ff1-977fcf4d1460,MusicBrainzTrack=c39a7a16-8626-3033-be7e-a1982c0252ed
+ALBUMARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+ARTIST "Elvis Costello & The Attractions" mbid=0ffb6573-a98e-412e-aa01-0a580e9d8b06
+COMPOSER "Declan Patrick MacManus" mbid=4d3924ac-7dc4-4632-9058-553119d6b951
+
+TRACK 8a2aa32b25fd80f6e043aaa8162eb89d "Alison"
+ALBUM 270476 "The Best Chillout... Ever!"
+DURATION_MS 201787
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzAlbum=a7911680-922f-40dc-9125-9660ceb6741c,MusicBrainzReleaseGroup=da9674b4-0ea0-357b-81ee-fa85644b6807,MusicBrainzTrack=a533ba87-405c-3953-b51c-67aa84b9380d
 ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
-ARTIST "Beenie Man" mbid=0d85b9f2-802d-48bb-aa85-6a9668869053
-COMPOSER "Beenie Man" mbid=0d85b9f2-802d-48bb-aa85-6a9668869053
-COMPOSER "Mikkel Storleer Eriksen" mbid=3394771a-a36b-4739-bcd9-301d09121af8
-COMPOSER "Tor Erik Hermansen" mbid=04c39fec-5b44-4f11-9c73-af4f562334c7
-COMPOSER "Dave Kelly" mbid=5b762e51-3bea-46d5-a6dc-56e6d96ab4a1
-
-TRACK 582093ba2d1c7aa1ae46aae4a1574fca "Dude"
-ALBUM 266730 "Now That's What I Call Music! 57"
-DURATION_MS 212715
-PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=0d85b9f2-802d-48bb-aa85-6a9668869053/e8755c00-8d3d-462b-b78b-f52a9c45ba42,MusicBrainzAlbum=55efbabf-6311-4f9f-b003-382c9ccb51f6,MusicBrainzReleaseGroup=33fa34a3-9eb4-39bb-a5cb-f226ad9ee933,MusicBrainzTrack=6e98adbb-d89c-3306-9c25-eb12ef0db106
-ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
-ARTIST "Beenie Man" mbid=0d85b9f2-802d-48bb-aa85-6a9668869053
-ARTIST "Ms. Thing" mbid=e8755c00-8d3d-462b-b78b-f52a9c45ba42
-COMPOSER "Dave Kelly" mbid=5b762e51-3bea-46d5-a6dc-56e6d96ab4a1
-
-TRACK 50a06181d6413f88be0ecec16c7dcad6 "Dude"
-ALBUM 270682 "The Best Summer ...Ever!"
-DURATION_MS 212845
-PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=0d85b9f2-802d-48bb-aa85-6a9668869053/e8755c00-8d3d-462b-b78b-f52a9c45ba42,MusicBrainzAlbum=a58e1b5a-5c02-46d1-b8fd-5de9d2c585ce,MusicBrainzReleaseGroup=caf89ef8-ac87-3d83-ae28-6da93419a82c,MusicBrainzTrack=0fdb486d-299a-3052-9b9f-ab0364c9f035
-ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
-ARTIST "Beenie Man" mbid=0d85b9f2-802d-48bb-aa85-6a9668869053
-ARTIST "Ms. Thing" mbid=e8755c00-8d3d-462b-b78b-f52a9c45ba42
-COMPOSER "Dave Kelly" mbid=5b762e51-3bea-46d5-a6dc-56e6d96ab4a1
-
-
-
-
-
-
-
+ARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+COMPOSER "Declan Patrick MacManus" mbid=4d3924ac-7dc4-4632-9058-553119d6b951
 
 
 

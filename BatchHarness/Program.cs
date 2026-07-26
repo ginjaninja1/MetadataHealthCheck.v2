@@ -171,7 +171,7 @@ static (StructuredLogger logger, HttpMusicBrainzApiClient mbClient, InMemoryIden
     // Fresh logger too, not just for thread safety -- StructuredLogger.Lines is
     // also a plain, unlocked List<string> (confirmed by reading Diagnostics/
     // StructuredLogger.cs), same category of problem as the two caches above.
-    var logger = new StructuredLogger();
+    var logger = new StructuredLogger(writeToConsole: false); // suppress per-artist console spam; keeps Lines buffer for on-error inspection
     var mbClient = new HttpMusicBrainzApiClient(logger);
     var identityCache = new InMemoryIdentityCache();
     var scoringConfigForPlugin = new ScoringConfig(); // plugin ctor requires one; shared config values are identical to the outer one

@@ -17,6 +17,8 @@ namespace MetadataHealthCheck.v2.BatchHarness
         public string SourceId { get; set; } = "";
         public string ExpectedMbid { get; set; } = "";
         public string ChosenMbid { get; set; } = "";
+        public string ExpectedUrl => HasExpectedMbid ? $"https://musicbrainz.org/artist/{ExpectedMbid}" : "";
+        public string ChosenUrl => !string.IsNullOrWhiteSpace(ChosenMbid) ? $"https://musicbrainz.org/artist/{ChosenMbid}" : "";
         public string Decision { get; set; } = "";           // MatchResult.Status: auto_accept | auto_reject | needs_review
         public double Confidence { get; set; }
         public double Margin { get; set; }
@@ -50,7 +52,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
         {
             var lines = new List<string>
             {
-                "ArtistName,SourceId,ExpectedMbid,ChosenMbid,Decision,Correct,Confidence,Margin,ApiCalls,ElapsedMs,Error"
+                "ArtistName,SourceId,ExpectedMbid,ExpectedUrl,ChosenMbid,ChosenUrl,Decision,Correct,Confidence,Margin,ApiCalls,ElapsedMs,Error"
             };
             foreach (var r in rows)
             {
@@ -59,7 +61,9 @@ namespace MetadataHealthCheck.v2.BatchHarness
                     CsvEscape(r.ArtistName),
                     CsvEscape(r.SourceId),
                     CsvEscape(r.ExpectedMbid),
+                    CsvEscape(r.ExpectedUrl),
                     CsvEscape(r.ChosenMbid),
+                    CsvEscape(r.ChosenUrl),
                     CsvEscape(r.Decision),
                     r.HasExpectedMbid ? r.Correct.ToString() : "",
                     r.Confidence.ToString("F4", CultureInfo.InvariantCulture),
