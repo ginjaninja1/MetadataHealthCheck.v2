@@ -162,6 +162,12 @@ static void PrintObservationAvailability(EmbyArtist artist)
     var counts = new[] { "AlbumArtist", "Artist", "Composer" }
         .Select(role => $"{artist.Tracks.Count(t => t.Role == role)} {role}");
     Console.WriteLine($"\n{artist.Tracks.Count} observation(s) available ({string.Join(", ", counts)}) -- sampled one at a time below, highest tier first.");
+    // Added 2026-07-27: AlbumArtist/Artist observations confirm via performer-credit
+    // only; Composer observations confirm via relationship-scan only (experimental
+    // pathway split -- see RecordingLookup.ConfirmationMode). A Composer-bucket trace
+    // line will never show "confirmed via performer-credit" -- that's expected, not a
+    // bug, since a composer structurally isn't the recording's performer.
+    Console.WriteLine("(AlbumArtist/Artist confirm via performer-credit only; Composer confirms via relationship-scan only.)");
 }
 
 static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, SimpleWeightedSumScorer scorer, HttpMusicBrainzApiClient mbClient)

@@ -1,4 +1,5 @@
-﻿using MetadataHealthCheck.v2.Core.Interfaces;
+﻿using System;
+using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
 using MetadataHealthCheck.v2.Sources.Emby;
@@ -25,6 +26,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     /// whole observations. See IRoundBasedObservationEvidenceCollector's own doc
     /// comment for why this is a second collector category rather than a change to
     /// the first.
+    ///
+    /// EXPERIMENTAL, 2026-07-27: this remains the ONE collector for both the
+    /// AlbumArtist/Artist pathway and the Composer pathway -- they are not split
+    /// into separate collector classes, since the only real difference between them
+    /// is which round-type(s) RecordingLookup is allowed to run, not anything about
+    /// how evidence is built or reported. ConfirmationModeForBucket (below) decides
+    /// PerformerOnly vs RelationshipOnly per observation from its bucket, and that
+    /// mode is passed straight into RecordingLookup.LookupRounds. See
+    /// RecordingLookup's ConfirmationMode doc comment for the full motivation.
     /// </summary>
     public class RecordingCorroborationEvidenceCollector : IRoundBasedObservationEvidenceCollector<EmbyArtist>
     {
@@ -66,7 +76,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 c => (IReadOnlyList<string>)(c.RelationshipMbids?.ToList() ?? new List<string>()));
             var candidateByMbid = candidates.ToDictionary(c => c.TargetId, c => c);
 
-            foreach (var round in _recordingLookup.LookupRounds(candidateMbids, relationshipMbidsByCandidate, track, recordedPerformerNames))
+            var mode = ConfirmationModeForBucket(trackUnit.BucketKey);
+
+            foreach (var round in _recordingLookup.LookupRounds(candidateMbids, relationshipMbidsByCandidate, track, recordedPerformerNames, mode))
             {
                 var output = new Dictionary<string, IReadOnlyList<EvidenceRecord>>();
                 foreach (var kvp in round.NewlyConfirmed)
@@ -77,6 +89,33 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                     output[candidate.Id] = new[] { BuildEvidenceRecord(candidate, track, lookup) };
                 }
                 if (output.Count > 0) yield return output;
+            }
+        }
+
+        // Added 2026-07-27 (experimental AlbumArtist/Artist vs Composer pathway
+        // split -- see ConfirmationMode's own doc comment in RecordingLookup.cs).
+        // Deliberately a hardcoded exhaustive switch, NOT a ScoringConfig-driven
+        // lookup table: which round-type(s) apply to a bucket is a statement about
+        // what that bucket's evidence IS (a performer-role bucket structurally can't
+        // confirm via relationship the way a composer-role bucket can't confirm via
+        // performer-credit), not a tunable weight or threshold. A new bucket is
+        // exactly as much a code change as a new evidence collector would be --
+        // adding one without deciding its confirmation mode here should fail loudly
+        // (the default arm below throws) rather than silently inherit a mode that
+        // was never actually reasoned about for it.
+        private static ConfirmationMode ConfirmationModeForBucket(string bucketKey)
+        {
+            switch (bucketKey)
+            {
+                case "AlbumArtist":
+                case "Artist":
+                    return ConfirmationMode.PerformerOnly;
+                case "Composer":
+                    return ConfirmationMode.RelationshipOnly;
+                default:
+                    throw new InvalidOperationException(
+                        $"RecordingCorroborationEvidenceCollector has no ConfirmationMode decision for bucket \"{bucketKey}\" -- " +
+                        "a new bucket needs a deliberate choice here (PerformerOnly/RelationshipOnly), not a silent default.");
             }
         }
 

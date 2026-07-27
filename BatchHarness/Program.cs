@@ -119,6 +119,7 @@ await Parallel.ForEachAsync(
             row.Confidence = result.Confidence;
             row.Llr = result.Llr;
             row.Margin = result.Margin;
+            row.EvidenceCountsByKey = BuildEvidenceCountsByKey(repo.Evidence);
         }
         catch (Exception ex)
         {
@@ -183,6 +184,35 @@ static (StructuredLogger logger, HttpMusicBrainzApiClient mbClient, InMemoryIden
     var scoringConfigForPlugin = new ScoringConfig(); // plugin ctor requires one; shared config values are identical to the outer one
     var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfigForPlugin, logger);
     return (logger, mbClient, identityCache, plugin);
+}
+
+// Added 2026-07-27 (Composer-relationship-pathway split): groups this artist's
+// CONTRIBUTING evidence (opportunistic/Contributing=false excluded -- it never
+// influenced the decision, so it shouldn't be counted as "used") into
+// "{Role}.{EvidenceType}.{ViaX}" keys. Role/EvidenceType/MatchedViaRelationship
+// already exist on EvidenceRecord -- this is a read-only reshaping for reporting,
+// no engine or model changes needed. Static evidence with no Role (e.g. name-
+// similarity, which is candidate-pair-level, not per-observation) is grouped
+// under "NoBucket" rather than dropped, so it's still visible in the CSV/console
+// output rather than silently missing.
+static Dictionary<string, int> BuildEvidenceCountsByKey(IReadOnlyList<EvidenceRecord> evidence)
+{
+    return evidence
+        .Where(e => e.Contributing)
+        .GroupBy(e =>
+        {
+            var role = string.IsNullOrEmpty(e.Role) ? "NoBucket" : e.Role;
+            // MatchedViaRelationship is only ever meaningfully set by
+            // RecordingCorroborationEvidenceCollector (CorroborationTier.*) -- for
+            // every other evidence type it's just the unset default (false), so
+            // appending a Via suffix there would falsely claim "ViaPerformer" for
+            // evidence that has nothing to do with performer/relationship confirmation.
+            if (!e.EvidenceType.StartsWith("CorroborationTier", StringComparison.OrdinalIgnoreCase))
+                return $"{role}.{e.EvidenceType}";
+            var via = e.MatchedViaRelationship ? "ViaRelationship" : "ViaPerformer";
+            return $"{role}.{e.EvidenceType}.{via}";
+        }, StringComparer.OrdinalIgnoreCase)
+        .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 }
 
 static Dictionary<string, string> LoadGroundTruth(string path)

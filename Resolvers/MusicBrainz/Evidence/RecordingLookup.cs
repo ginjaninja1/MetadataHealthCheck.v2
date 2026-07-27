@@ -49,6 +49,38 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // ConfirmAtRung / ConfirmAtRungByFrequency, within rungs 1-5 above.
     }
 
+    /// <summary>
+    /// Added 2026-07-27: which round-type(s) a rung's confirmation walk is allowed
+    /// to run, decided by the caller (RecordingCorroborationEvidenceCollector) from
+    /// the observation's bucket (AlbumArtist/Artist/Composer), NOT a per-track or
+    /// per-candidate choice -- every rung in the ladder for a given observation runs
+    /// under the same mode.
+    ///
+    /// Motivating problem: a single unified confirmation walk (cheap performer-
+    /// credit round, then relationship-scan round, every rung, every bucket) meant
+    /// a MusicBrainz-high-scoring PERFORMER candidate could confirm and stop the
+    /// sampler before a genuinely correct COMPOSER candidate's relationship match
+    /// was ever attempted for that same observation. Composer-bucket observations
+    /// structurally can never confirm via performer-credit in the first place (a
+    /// composer isn't the recording's performer) -- running that round for them was
+    /// always wasted work, not a real chance at a hit.
+    ///
+    /// PerformerOnly: run the cheap performer-credit round only; never call
+    /// GetRelationships for this observation. Used for AlbumArtist/Artist buckets.
+    /// RelationshipOnly: skip the cheap round; go straight to the relationship-scan
+    /// round for every rung. Used for the Composer bucket.
+    ///
+    /// The original combined behavior (both rounds, unconditionally) is walled off
+    /// rather than deleted -- see RoundsForRung/RoundsForDurationRung's own comments
+    /// -- since this split is explicitly experimental (per Nick, 2026-07-27) and the
+    /// two-round shape may need to be recombined or re-tuned once real data comes in.
+    /// </summary>
+    public enum ConfirmationMode
+    {
+        PerformerOnly,
+        RelationshipOnly,
+    }
+
     public class RecordingLookupResult
     {
         public MbRecordingResult? Recording { get; set; }
@@ -141,6 +173,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     /// Memoization is per RecordingLookup instance, per (candidateMbid, trackId)
     /// pair, for the lifetime of one shared instance — constructed once in
     /// MusicBrainzArtistResolverPlugin and passed to every collector that needs it.
+    ///
+    /// EXPERIMENTAL SPLIT, 2026-07-27: LookupRounds now takes a ConfirmationMode
+    /// (see its own doc comment) that restricts EACH rung above to only one of the
+    /// two round-types described above -- performer-credit-only for AlbumArtist/
+    /// Artist bucket observations, relationship-scan-only for Composer bucket
+    /// observations. The rung ladder, duration gate, richness/frequency ordering,
+    /// and early-stop-on-confirmation behavior are identical either way; only which
+    /// confirmation check(s) run at each rung changes. This is walled off behind the
+    /// mode parameter rather than removed, since it's explicitly experimental.
     /// </summary>
     public class RecordingLookup
     {
@@ -222,7 +263,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // Not memoized -- this method's own per-rung raw-search calls already go
         // through SearchRecordingCached/_durationRungCache, which is where the real
         // duplicate-API-call saving lives.
-        public IEnumerable<RecordingLookupRoundResult> LookupRounds(IReadOnlyList<string> candidateMbids, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate, EmbyTrackCredit track, IEnumerable<string>? artistNames)
+        public IEnumerable<RecordingLookupRoundResult> LookupRounds(IReadOnlyList<string> candidateMbids, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate, EmbyTrackCredit track, IEnumerable<string>? artistNames, ConfirmationMode mode)
         {
             var names = (artistNames ?? Enumerable.Empty<string>()).ToList();
             var pending = new HashSet<string>(candidateMbids);
@@ -239,7 +280,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 var recordings = SearchRecordingCached(track, track.AlbumName, names, RecordingLookupRung.TrackArtistAlbum);
                 if (recordings.Count > 0)
                 {
-                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtistAlbum, recordings, track, pending, relationshipMbidsByCandidate))
+                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtistAlbum, recordings, track, pending, relationshipMbidsByCandidate, mode))
                     {
                         yield return round;
                         if (pending.Count == 0) yield break;
@@ -254,7 +295,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 var recordings = SearchRecordingCached(track, null, names, RecordingLookupRung.TrackArtist);
                 if (recordings.Count > 0)
                 {
-                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtist, recordings, track, pending, relationshipMbidsByCandidate))
+                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackArtist, recordings, track, pending, relationshipMbidsByCandidate, mode))
                     {
                         yield return round;
                         if (pending.Count == 0) yield break;
@@ -268,7 +309,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 var recordings = SearchRecordingCached(track, track.AlbumName, null, RecordingLookupRung.TrackAlbum);
                 if (recordings.Count > 0)
                 {
-                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackAlbum, recordings, track, pending, relationshipMbidsByCandidate))
+                    foreach (var round in RoundsForRung(RecordingLookupRung.TrackAlbum, recordings, track, pending, relationshipMbidsByCandidate, mode))
                     {
                         yield return round;
                         if (pending.Count == 0) yield break;
@@ -283,7 +324,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 var data = GetOrBuildDurationRungData(track);
                 if (data.Recordings.Count > 0)
                 {
-                    foreach (var round in RoundsForDurationRung(track, pending, relationshipMbidsByCandidate))
+                    foreach (var round in RoundsForDurationRung(track, pending, relationshipMbidsByCandidate, mode))
                     {
                         yield return round;
                         if (pending.Count == 0) yield break;
@@ -293,7 +334,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 _logger?.Debug("RecordingLookup", "[TrackDuration] \"{0}\" -- returned zero recordings, falling through.", track.TrackName);
             }
 
-            foreach (var round in RoundsForRung(RecordingLookupRung.TrackOnly, SearchRecordingCached(track, null, null, RecordingLookupRung.TrackOnly), track, pending, relationshipMbidsByCandidate))
+            foreach (var round in RoundsForRung(RecordingLookupRung.TrackOnly, SearchRecordingCached(track, null, null, RecordingLookupRung.TrackOnly), track, pending, relationshipMbidsByCandidate, mode))
             {
                 yield return round;
                 if (pending.Count == 0) yield break;
@@ -310,36 +351,49 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // still-pending candidate. Same gating/sorting/confirmation rule as every other
         // rung, just re-shaped so multiple candidates share each API call instead of
         // each candidate re-deriving it alone.
-        private IEnumerable<RecordingLookupRoundResult> RoundsForRung(RecordingLookupRung rung, IReadOnlyList<MbRecordingResult> recordings, EmbyTrackCredit track, HashSet<string> pending, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate)
+        // ConfirmationMode parameter added 2026-07-27 (experimental AlbumArtist/Artist
+        // vs Composer pathway split -- see ConfirmationMode's own doc comment). The
+        // cheap performer-credit round and the relationship-scan round are both left
+        // completely intact below, just each wrapped in a mode guard: WALLED OFF, not
+        // removed, per explicit instruction, since this split may need to be undone or
+        // re-tuned once real data comes in. PerformerOnly skips straight past the
+        // relationship-scan loop (no GetRelationships call fires at all for this rung);
+        // RelationshipOnly skips the cheap loop entirely and goes straight to the scan.
+        private IEnumerable<RecordingLookupRoundResult> RoundsForRung(RecordingLookupRung rung, IReadOnlyList<MbRecordingResult> recordings, EmbyTrackCredit track, HashSet<string> pending, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate, ConfirmationMode mode)
         {
             var survivors = ApplyDurationGate(recordings, track.Duration).OrderBy(r => RichnessRank(r)).ToList();
 
-            var cheapConfirmed = new Dictionary<string, RecordingLookupResult>();
-            foreach (var candidateMbid in pending.ToList())
+            if (mode == ConfirmationMode.PerformerOnly)
             {
-                foreach (var rec in survivors)
+                var cheapConfirmed = new Dictionary<string, RecordingLookupResult>();
+                foreach (var candidateMbid in pending.ToList())
                 {
-                    if (rec.ArtistMbid != candidateMbid) continue;
-                    var candidateName = _client.GetArtistDisplayName(candidateMbid);
-                    var candidateAliases = _client.GetArtistAliases(candidateMbid);
-                    var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
-                    if (outcome == NameMatchOutcome.TooPoorToTrust) continue;
-
-                    cheapConfirmed[candidateMbid] = new RecordingLookupResult
+                    foreach (var rec in survivors)
                     {
-                        Recording = rec,
-                        RungReached = rung,
-                        MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
-                        ConfirmedViaRelationship = false,
-                    };
-                    break;
-                }
-            }
-            foreach (var mbid in cheapConfirmed.Keys) pending.Remove(mbid);
-            if (cheapConfirmed.Count > 0)
-                yield return new RecordingLookupRoundResult { NewlyConfirmed = cheapConfirmed, RoundDescription = $"{rung} (performer-credit, no API call)" };
+                        if (rec.ArtistMbid != candidateMbid) continue;
+                        var candidateName = _client.GetArtistDisplayName(candidateMbid);
+                        var candidateAliases = _client.GetArtistAliases(candidateMbid);
+                        var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
+                        if (outcome == NameMatchOutcome.TooPoorToTrust) continue;
 
-            if (pending.Count == 0) yield break;
+                        cheapConfirmed[candidateMbid] = new RecordingLookupResult
+                        {
+                            Recording = rec,
+                            RungReached = rung,
+                            MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
+                            ConfirmedViaRelationship = false,
+                        };
+                        break;
+                    }
+                }
+                foreach (var mbid in cheapConfirmed.Keys) pending.Remove(mbid);
+                if (cheapConfirmed.Count > 0)
+                    yield return new RecordingLookupRoundResult { NewlyConfirmed = cheapConfirmed, RoundDescription = $"{rung} (performer-credit, no API call)" };
+
+                if (pending.Count == 0) yield break;
+            }
+
+            if (mode != ConfirmationMode.RelationshipOnly) yield break;
 
             foreach (var rec in survivors)
             {
@@ -373,7 +427,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // TrackDuration's round-based variant -- same cheap-then-expensive shape as
         // RoundsForRung, but walked in artist-frequency order (falling back to richness
         // order when the lead isn't meaningful), mirroring ConfirmAtRungByFrequency.
-        private IEnumerable<RecordingLookupRoundResult> RoundsForDurationRung(EmbyTrackCredit track, HashSet<string> pending, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate)
+        // ConfirmationMode parameter added 2026-07-27 -- see RoundsForRung's comment
+        // directly above; same walled-off gating applied here, not repeated in full.
+        private IEnumerable<RecordingLookupRoundResult> RoundsForDurationRung(EmbyTrackCredit track, HashSet<string> pending, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate, ConfirmationMode mode)
         {
             var data = GetOrBuildDurationRungData(track);
 
@@ -389,32 +445,37 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 .ThenBy(r => RichnessRank(r))
                 .ToList();
 
-            var cheapConfirmed = new Dictionary<string, RecordingLookupResult>();
-            foreach (var candidateMbid in pending.ToList())
+            if (mode == ConfirmationMode.PerformerOnly)
             {
-                foreach (var rec in survivors)
+                var cheapConfirmed = new Dictionary<string, RecordingLookupResult>();
+                foreach (var candidateMbid in pending.ToList())
                 {
-                    if (rec.ArtistMbid != candidateMbid) continue;
-                    var candidateName = _client.GetArtistDisplayName(candidateMbid);
-                    var candidateAliases = _client.GetArtistAliases(candidateMbid);
-                    var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
-                    if (outcome == NameMatchOutcome.TooPoorToTrust) continue;
-
-                    cheapConfirmed[candidateMbid] = new RecordingLookupResult
+                    foreach (var rec in survivors)
                     {
-                        Recording = rec,
-                        RungReached = RecordingLookupRung.TrackDuration,
-                        MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
-                        ConfirmedViaRelationship = false,
-                    };
-                    break;
-                }
-            }
-            foreach (var mbid in cheapConfirmed.Keys) pending.Remove(mbid);
-            if (cheapConfirmed.Count > 0)
-                yield return new RecordingLookupRoundResult { NewlyConfirmed = cheapConfirmed, RoundDescription = "TrackDuration (performer-credit, no API call)" };
+                        if (rec.ArtistMbid != candidateMbid) continue;
+                        var candidateName = _client.GetArtistDisplayName(candidateMbid);
+                        var candidateAliases = _client.GetArtistAliases(candidateMbid);
+                        var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
+                        if (outcome == NameMatchOutcome.TooPoorToTrust) continue;
 
-            if (pending.Count == 0) yield break;
+                        cheapConfirmed[candidateMbid] = new RecordingLookupResult
+                        {
+                            Recording = rec,
+                            RungReached = RecordingLookupRung.TrackDuration,
+                            MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
+                            ConfirmedViaRelationship = false,
+                        };
+                        break;
+                    }
+                }
+                foreach (var mbid in cheapConfirmed.Keys) pending.Remove(mbid);
+                if (cheapConfirmed.Count > 0)
+                    yield return new RecordingLookupRoundResult { NewlyConfirmed = cheapConfirmed, RoundDescription = "TrackDuration (performer-credit, no API call)" };
+
+                if (pending.Count == 0) yield break;
+            }
+
+            if (mode != ConfirmationMode.RelationshipOnly) yield break;
 
             foreach (var rec in survivors)
             {
