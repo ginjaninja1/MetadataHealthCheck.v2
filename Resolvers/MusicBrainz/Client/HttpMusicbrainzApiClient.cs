@@ -102,6 +102,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         Name = a.Name ?? "",
                         Disambiguation = a.Disambiguation,
                         Score = ParseScore(a.Score),
+                        Type = a.Type ?? "",
                     };
                     if (a.Aliases != null)
                         foreach (var al in a.Aliases)
@@ -118,7 +119,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
             _logger.Debug("MbApi", "  -> {0} artist result(s):", results.Count);
             foreach (var r in results)
-                _logger.Debug("MbApi", "       {0} [{1}] score={2} aliases=[{3}]", r.Name, r.Mbid, r.Score, string.Join(", ", r.Aliases));
+                _logger.Debug("MbApi", "       {0} [{1}] type={2} score={3} aliases=[{4}]", r.Name, r.Mbid, r.Type, r.Score, string.Join(", ", r.Aliases));
             return results;
         }
 
@@ -567,6 +568,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             [DataMember(Name = "disambiguation")] public string? Disambiguation { get; set; }
             [DataMember(Name = "score")] public string? Score { get; set; } // MB returns this as a JSON string, not a number
             [DataMember(Name = "aliases")] public List<AliasDto>? Aliases { get; set; }
+            [DataMember(Name = "type")] public string? Type { get; set; } // "Person" | "Group" | others -- added 2026-07-27
         }
 
         [DataContract]

@@ -6,6 +6,11 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         public string Name { get; set; } = "";
         public string? Disambiguation { get; set; }
         public int Score { get; set; }               // MB's own text-relevance score — pool-admission filter ONLY, §5.4
+        // Added 2026-07-27: MusicBrainz's own artist "type" (e.g. "Person", "Group"),
+        // returned inline on every /ws/2/artist search hit, same as Aliases below --
+        // no extra inc= parameter needed. Used only by pathway-local fold rules
+        // (e.g. Composer bucket); never a candidate-admission gate.
+        public string Type { get; set; } = "";
 
         // Added 2026-07-12 (coding checklist item 1): real ws/2/artist search responses
         // return registered aliases inline on each result, no extra inc= parameter

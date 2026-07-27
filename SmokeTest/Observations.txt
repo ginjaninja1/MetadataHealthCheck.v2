@@ -36,33 +36,26 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
-ARTIST 9850eb9072694700bf2b8d4becb806c9 "Alex Chilton"
-TRACK 66cf0702b397e50e6e566badc22b0e93 "Holocaust"
-ALBUM 274642 "Acoustic"
-DURATION_MS 257906
-PROVIDERIDS MusicBrainzAlbumArtist=847e8284-8582-4b0e-9c26-b042a4f49e57,MusicBrainzArtist=847e8284-8582-4b0e-9c26-b042a4f49e57,MusicBrainzAlbum=c853d99d-1d8a-4a2b-8068-30a367b5e256,MusicBrainzReleaseGroup=2f2b8a99-9088-3914-9eeb-14cd7fb4c661,MusicBrainzTrack=4ae7edfb-62f9-3324-8850-c974c479f006
-ALBUMARTIST "Placebo" mbid=847e8284-8582-4b0e-9c26-b042a4f49e57
-ARTIST "Placebo" mbid=847e8284-8582-4b0e-9c26-b042a4f49e57
-COMPOSER "Alex Chilton" mbid=18b2f43a-fc98-4aab-b69c-eaaba41fecbc
+ARTIST 1ef7855692a6418ea7a255177fb047fe "Andre Harris"
+TRACK 6ce0f54b51cae46aa5817cacdc7762d9 "So Simple"
+ALBUM 254855 "The Diary of Alicia Keys"
+DURATION_MS 229419
+PROVIDERIDS MusicBrainzAlbumArtist=8ef1df30-ae4f-4dbd-9351-1a32b208a01e,MusicBrainzArtist=8ef1df30-ae4f-4dbd-9351-1a32b208a01e,MusicBrainzAlbum=f5165079-0fa6-348e-9703-465bc30d9bae,MusicBrainzReleaseGroup=e53e291f-9a9c-38a0-96e0-86a9b63b776d,MusicBrainzTrack=5dbc26a2-327c-3114-a58d-1cbb530b53a9
+ALBUMARTIST "Alicia Keys" mbid=8ef1df30-ae4f-4dbd-9351-1a32b208a01e
+ARTIST "Alicia Keys" mbid=8ef1df30-ae4f-4dbd-9351-1a32b208a01e
+COMPOSER "Vidal Davis" mbid=8a3b1cd9-6030-40c5-a6f5-f3b92ec73c8a
+COMPOSER "Andre Harris" mbid=860c7e56-d706-4222-98ca-1e4eb655ccf7
+COMPOSER "Alicia Keys" mbid=8ef1df30-ae4f-4dbd-9351-1a32b208a01e
+COMPOSER "Harold Lilly" mbid=1234a4a9-5d91-4ca9-be26-2159589b984e
 
-TRACK fcf4e5420db93d18ca064b040d30a735 "Holocaust"
-ALBUM 274643 "Sleeping With Ghosts"
-DURATION_MS 267840
-PROVIDERIDS MusicBrainzAlbumArtist=847e8284-8582-4b0e-9c26-b042a4f49e57,MusicBrainzArtist=847e8284-8582-4b0e-9c26-b042a4f49e57,MusicBrainzAlbum=77ecdf3a-0a10-3253-b7c3-99ef2e3eca1d,MusicBrainzReleaseGroup=fd6279cf-0bf3-3d8f-9e07-bde8b7a34448,MusicBrainzTrack=26180715-e130-3108-9445-350de28d0db5
-ALBUMARTIST "Placebo" mbid=847e8284-8582-4b0e-9c26-b042a4f49e57
-ARTIST "Placebo" mbid=847e8284-8582-4b0e-9c26-b042a4f49e57
-COMPOSER "Alex Chilton" mbid=18b2f43a-fc98-4aab-b69c-eaaba41fecbc
-
-TRACK f405d7c2482a2f98643099863b6583e6 "Watch the Sunrise"
-ALBUM 255757 "LateNightTales: Belle & Sebastian"
-DURATION_MS 188656
-PROVIDERIDS MusicBrainzAlbumArtist=e5c7b94f-e264-473c-bb0f-37c85d4d5c70,MusicBrainzArtist=21d177ba-3d51-461e-9b3f-ad9a80b419dc,MusicBrainzAlbum=9a10bf45-51d3-44fd-8b2d-fb1408ad76cd,MusicBrainzReleaseGroup=61ad5e58-65b4-384d-9317-5cf97c3ec661,MusicBrainzTrack=4f4b1c1a-734c-3cb8-b1d3-8e369a2d042d
-ALBUMARTIST "Belle and Sebastian" mbid=e5c7b94f-e264-473c-bb0f-37c85d4d5c70
-ARTIST "Big Star" mbid=21d177ba-3d51-461e-9b3f-ad9a80b419dc
-COMPOSER "Chris Bell" mbid=db6ac2f7-5bbb-4ed4-88f4-540d5b29542a
-COMPOSER "Alex Chilton" mbid=18b2f43a-fc98-4aab-b69c-eaaba41fecbc
-
-
+TRACK 4587badea81a3f1e7576828dd8be1dd9 "Butterflies"
+ALBUM 273838 "Invincible"
+DURATION_MS 280163
+PROVIDERIDS MusicBrainzAlbumArtist=f27ec8db-af05-4f36-916e-3d57f91ecf5e,MusicBrainzArtist=f27ec8db-af05-4f36-916e-3d57f91ecf5e,MusicBrainzAlbum=d2126f31-5b6b-4a4b-98d3-408cfd4186b2,MusicBrainzReleaseGroup=c24c5313-da47-3155-8277-a6a1a4237966,MusicBrainzTrack=a3082e59-106d-3202-b837-fcb4aff41262
+ALBUMARTIST "Michael Jackson" mbid=f27ec8db-af05-4f36-916e-3d57f91ecf5e
+ARTIST "Michael Jackson" mbid=f27ec8db-af05-4f36-916e-3d57f91ecf5e
+COMPOSER "Marsha Ambrosius" mbid=24285231-f192-42f1-baea-0f467dd1d8aa
+COMPOSER "Andre Harris" mbid=860c7e56-d706-4222-98ca-1e4eb655ccf7
 
 ARTIST emby-artist-sarah-vaughan "Sarah Vaughan"
 

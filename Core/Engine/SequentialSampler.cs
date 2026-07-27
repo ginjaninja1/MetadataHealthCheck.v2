@@ -24,6 +24,11 @@ namespace MetadataHealthCheck.v2.Core.Engine
         private readonly IEnumerable<IObservationEvidenceCollector<TSourceEntity>> _observationCollectors;
         private readonly IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> _roundBasedCollectors;
         private readonly IObservationUnitProvider<TSourceEntity>? _unitProvider;
+        // Added 2026-07-27: optional, per-bucket candidate narrowing (e.g. Composer
+        // bucket folding a Group candidate into its live Person band-member). Null means
+        // no filtering anywhere -- every bucket's candidate list is exactly `candidates`,
+        // identical to behavior before this field existed.
+        private readonly IBucketCandidateFilter? _bucketCandidateFilter;
         private readonly IBeliefScorer _scorer;
         private readonly IDecisionGate _decisionGate;
         private readonly StructuredLogger _logger;
@@ -33,6 +38,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
             IEnumerable<IObservationEvidenceCollector<TSourceEntity>> observationCollectors,
             IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedCollectors,
             IObservationUnitProvider<TSourceEntity>? unitProvider,
+            IBucketCandidateFilter? bucketCandidateFilter,
             IBeliefScorer scorer,
             IDecisionGate decisionGate,
             StructuredLogger logger)
@@ -41,6 +47,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
             _observationCollectors = observationCollectors;
             _roundBasedCollectors = roundBasedCollectors;
             _unitProvider = unitProvider;
+            _bucketCandidateFilter = bucketCandidateFilter;
             _scorer = scorer;
             _decisionGate = decisionGate;
             _logger = logger;
@@ -126,7 +133,14 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
                         Banner($"OBSERVATION #{drawn + 1} ({unit.BucketKey} bucket): {unit.Describe()}");
 
-                        foreach (var candidate in candidates)
+                        // Added 2026-07-27: narrow the live candidate set for THIS bucket only,
+                        // if the plugin registered a filter. `candidates` (the full list used for
+                        // evidenceByCandidate/scoring/nameCounts/candidatesById above) is untouched --
+                        // a filtered-out candidate just doesn't get new evidence collected for it in
+                        // this bucket; its running LLR from any other bucket stands as-is.
+                        var bucketCandidates = _bucketCandidateFilter?.Filter(unit.BucketKey, candidates, context) ?? candidates;
+
+                        foreach (var candidate in bucketCandidates)
                         {
                             var candidateRecords = new List<EvidenceRecord>();
                             foreach (var collector in _observationCollectors)
@@ -174,7 +188,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         bool stoppedMidObservation = false;
                         foreach (var collector in _roundBasedCollectors)
                         {
-                            foreach (var round in collector.CollectRounds(source, candidates, unit, context))
+                            foreach (var round in collector.CollectRounds(source, bucketCandidates, unit, context))
                             {
                                 foreach (var roundKvp in round)
                                 {

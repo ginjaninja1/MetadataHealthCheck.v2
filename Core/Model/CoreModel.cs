@@ -53,6 +53,22 @@ namespace MetadataHealthCheck.v2.Core.Model
         // candidate generator is updated to populate it -- until then this is inert and
         // every existing identity check (TargetId only) behaves exactly as before.
         public IReadOnlyList<string> RelationshipMbids { get; set; } = Array.Empty<string>();
+
+        // Added 2026-07-27: MusicBrainz's own artist "type" field (e.g. "Person",
+        // "Group"), captured for one specific purpose -- letting a pathway-local
+        // fold rule (e.g. ComposerBucketCandidateFilter) tell a band candidate
+        // apart from a person candidate. NOT used as a candidate-admission gate;
+        // a Group is a perfectly valid candidate for Artist/AlbumArtist buckets.
+        public string Type { get; set; } = "";
+
+        // Added 2026-07-27: subset of the relationships behind RelationshipMbids
+        // that are specifically Classification==GroupMembership (e.g. "member of
+        // band"), rather than the flattened all-classifications list RelationshipMbids
+        // already is. Existing consumers of RelationshipMbids (RecordingCorroborationEvidenceCollector,
+        // SmokeTest's scoreboard) are untouched -- this is purely additive, for the
+        // Composer-bucket fold rule to find "this Group candidate's linked Person
+        // member(s)" without needing classification data RelationshipMbids doesn't carry.
+        public IReadOnlyList<string> GroupMembershipMbids { get; set; } = Array.Empty<string>();
     }
 
     public class EvidenceRecord

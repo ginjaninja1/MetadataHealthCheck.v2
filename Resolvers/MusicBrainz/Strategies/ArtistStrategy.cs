@@ -179,10 +179,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     TargetEntityType = "Artist",
                     TargetId = result.Mbid,
                     Name = result.Name,
+                    Type = result.Type,
                     GenerationStrategy = StrategyName,
                     GenerationQuery = $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
                     CreatedAt = DateTime.UtcNow,
                     RelationshipMbids = relationships.Select(r => r.Mbid).ToList(),
+                    // Added 2026-07-27: same source data as RelationshipMbids above, just
+                    // narrowed to Classification==GroupMembership -- for ComposerBucketCandidateFilter,
+                    // which needs to distinguish "this Group's own band member" from any other
+                    // admitted relationship. RelationshipMbids itself is deliberately left as-is.
+                    GroupMembershipMbids = relationships
+                        .Where(r => r.Classification == ArtistRelationshipClassification.GroupMembership)
+                        .Select(r => r.Mbid)
+                        .ToList(),
                 });
             }
 

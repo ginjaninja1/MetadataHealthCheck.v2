@@ -23,6 +23,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
         // separate category from ObservationEvidenceCollectors above.
         public IEnumerable<IRoundBasedObservationEvidenceCollector<EmbyArtist>> RoundBasedObservationEvidenceCollectors { get; }
         public IObservationUnitProvider<EmbyArtist>? ObservationUnitProvider { get; }
+        // Added 2026-07-27 -- see ComposerBucketCandidateFilter's own doc comment.
+        public IBucketCandidateFilter? BucketCandidateFilter { get; }
         public IBeliefScorer Scorer { get; }
         public IDecisionGate DecisionGate { get; }
 
@@ -110,6 +112,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz
             };
 
             ObservationUnitProvider = new EmbyArtistObservationUnitProvider();
+            BucketCandidateFilter = new ComposerBucketCandidateFilter(logger);
 
             Scorer = new SimpleWeightedSumScorer();     // Bayesian scorer arrives as a follow-up step, §21
             DecisionGate = new ThresholdDecisionGate();

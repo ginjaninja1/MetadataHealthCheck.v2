@@ -110,6 +110,20 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         MatchResult Decide(IEnumerable<ScoredCandidate> rankedCandidates, ScoringConfig config, string sourceSystem, string sourceId);
     }
 
+    // Added 2026-07-27. Optional, pathway-local candidate narrowing for one specific
+    // bucket (e.g. "Composer") -- deliberately opaque to SequentialSampler/Core: it
+    // knows nothing about what a bucketKey or a Group/Person Candidate.Type MEANS, it
+    // just relays the bucket's own key string and the currently-live candidate list to
+    // whatever the plugin registered, and uses whatever comes back for that bucket's
+    // collection loop only. Does NOT touch evidenceByCandidate/scoring for any
+    // candidate -- a filtered-out candidate simply collects no NEW evidence in that
+    // bucket; its running LLR from other buckets is untouched. Null on the plugin
+    // means no filtering anywhere, for any bucket -- today's behavior, unchanged.
+    public interface IBucketCandidateFilter
+    {
+        IReadOnlyList<Candidate> Filter(string bucketKey, IReadOnlyList<Candidate> liveCandidates, ResolutionContext context);
+    }
+
     // The unit of extensibility for new target systems/entity types: one implementation
     // per (target system, target entity type) pair. §11.4.
     public interface IResolverPlugin<TSourceEntity> where TSourceEntity : ISourceEntity
@@ -128,6 +142,9 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         // Null if the entity type has no observation/role concept (§11.4) -- SequentialSampler
         // then scores from static evidence alone, same as Phase 1's behavior.
         IObservationUnitProvider<TSourceEntity>? ObservationUnitProvider { get; }
+        // Added 2026-07-27. Null if the plugin has no pathway-local fold rule for any
+        // bucket -- SequentialSampler then behaves exactly as before this change.
+        IBucketCandidateFilter? BucketCandidateFilter { get; }
         IBeliefScorer Scorer { get; }
         IDecisionGate DecisionGate { get; }
     }

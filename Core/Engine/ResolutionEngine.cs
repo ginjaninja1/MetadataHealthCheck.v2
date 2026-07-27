@@ -57,6 +57,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
                 _plugin.ObservationEvidenceCollectors,
                 _plugin.RoundBasedObservationEvidenceCollectors,
                 _plugin.ObservationUnitProvider,
+                _plugin.BucketCandidateFilter,
                 _plugin.Scorer,
                 _plugin.DecisionGate,
                 _logger);
