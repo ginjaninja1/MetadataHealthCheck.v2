@@ -363,6 +363,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         {
             var survivors = ApplyDurationGate(recordings, track.Duration).OrderBy(r => RichnessRank(r)).ToList();
 
+            // Added 2026-07-27, diagnostic only: confirms the actual scan order RichnessRank
+            // produced, since the terse per-recording debug print elsewhere (Status/Type/
+            // Releases) doesn't show ReleaseGroupSecondaryTypes, which also feeds the rank.
+            // Remove once the ordering discrepancy under investigation is settled.
+            if (survivors.Count > 1)
+            {
+                _logger?.Debug("RecordingLookup", "[{0}] richness order for {1} duration-gate survivor(s):", rung, survivors.Count);
+                foreach (var s in survivors)
+                {
+                    _logger?.Debug("RecordingLookup", "     rank={0,4}  recordingId={1}  status={2}  type={3}  secondaryTypes=[{4}]  releases={5}",
+                        RichnessRank(s), s.RecordingId, s.ReleaseStatus ?? "(none)", s.ReleaseGroupPrimaryType ?? "(none)",
+                        string.Join(", ", s.ReleaseGroupSecondaryTypes), s.ReleaseCount);
+                }
+            }
+
             if (mode == ConfirmationMode.PerformerOnly)
             {
                 var cheapConfirmed = new Dictionary<string, RecordingLookupResult>();

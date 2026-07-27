@@ -515,7 +515,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                 var response = _http.GetAsync(relativeUrl).GetAwaiter().GetResult();
                 if (!response.IsSuccessStatusCode)
                 {
-                    _logger.Warn("MbApi", "  -> HTTP {0} for {1}", (int)response.StatusCode, relativeUrl);
+                    // Added 2026-07-27: Location header logged specifically to diagnose an
+                    // observed 301 on GetRelationships for one recording MBID while identical
+                    // calls for other recordings succeeded -- distinguishes "this recording was
+                    // merged/redirected by MusicBrainz itself" from "the client isn't following
+                    // a redirect it should" (default HttpClientHandler.AllowAutoRedirect is true,
+                    // so seeing a raw redirect status here at all is the surprising part).
+                    var location = response.Headers.Location?.ToString() ?? "(none)";
+                    _logger.Warn("MbApi", "  -> HTTP {0} for {1} -- Location: {2}", (int)response.StatusCode, relativeUrl, location);
                     return null;
                 }
                 return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
