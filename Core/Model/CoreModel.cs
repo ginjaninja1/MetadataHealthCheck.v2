@@ -39,6 +39,11 @@ namespace MetadataHealthCheck.v2.Core.Model
         public string TargetSystem { get; set; } = "";        // "MusicBrainz"
         public string TargetEntityType { get; set; } = "";     // "Artist"
         public string TargetId { get; set; } = "";              // MBID
+        // Added 2026-07-27: display name captured at candidate-generation time, purely
+        // for human-readable logging (SequentialSampler trace, SmokeTest scoreboard).
+        // NEVER used for identity/matching logic -- TargetId (MBID) remains the only
+        // key that decides whether two candidates are the same entity.
+        public string Name { get; set; } = "";
         public string GenerationStrategy { get; set; } = "";    // "A" | "B" | "C"
         public string GenerationQuery { get; set; } = "";       // literal query string, for logging
         public DateTime CreatedAt { get; set; }

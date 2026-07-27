@@ -178,6 +178,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     TargetSystem = "MusicBrainz",
                     TargetEntityType = "Artist",
                     TargetId = result.Mbid,
+                    Name = result.Name,
                     GenerationStrategy = StrategyName,
                     GenerationQuery = $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
                     CreatedAt = DateTime.UtcNow,

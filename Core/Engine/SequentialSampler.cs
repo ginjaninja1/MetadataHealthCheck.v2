@@ -50,6 +50,19 @@ namespace MetadataHealthCheck.v2.Core.Engine
         {
             var evidenceByCandidate = candidates.ToDictionary(c => c.Id, c => new List<EvidenceRecord>());
 
+            // Added 2026-07-27: candidate lookup + display-label resolution, purely for
+            // logging. candidatesById exists because round-based collectors key their
+            // per-round dictionaries by Candidate.Id (an internal GUID -- see
+            // evidenceByCandidate above), so a round's log line needs to map back to the
+            // actual Candidate to get its Name/TargetId. nameCounts drives the
+            // "Name|MBID" vs bare "Name" choice below: only disambiguate with the MBID
+            // when two live candidates actually share a display name.
+            var candidatesById = candidates.ToDictionary(c => c.Id);
+            var nameCounts = candidates
+                .Select(c => string.IsNullOrEmpty(c.Name) ? c.TargetId : c.Name)
+                .GroupBy(n => n)
+                .ToDictionary(g => g.Key, g => g.Count());
+
             Banner($"BEGIN RESOLUTION: {source.DisplayName}");
 
             // Step 1: static, candidate-pair-level evidence -- once per candidate,
@@ -75,16 +88,16 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
                 foreach (var record in contributing)
                 {
-                    LogEvidence(candidate.TargetId, record, config, prefix: "static ", indent: "");
+                    LogEvidence(candidate, nameCounts, record, config, prefix: "static ", indent: "");
                 }
                 if (opportunistic.Count > 0)
                 {
-                    _logger.Debug("Sampler", "[{0}] ---- opportunistic evidence below (not scored, informational only) ----", candidate.TargetId);
+                    _logger.Debug("Sampler", "[{0}] ---- opportunistic evidence below (not scored, informational only) ----", FormatCandidateLabel(candidate, nameCounts));
                     foreach (var record in opportunistic)
                     {
-                        LogEvidence(candidate.TargetId, record, config, prefix: "static ", indent: "");
+                        LogEvidence(candidate, nameCounts, record, config, prefix: "static ", indent: "");
                     }
-                    _logger.Debug("Sampler", "[{0}] ---- end opportunistic evidence ----", candidate.TargetId);
+                    _logger.Debug("Sampler", "[{0}] ---- end opportunistic evidence ----", FormatCandidateLabel(candidate, nameCounts));
                 }
             }
             Banner("END STATIC EVIDENCE");
@@ -133,16 +146,16 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
                             foreach (var record in contributing)
                             {
-                                LogEvidence(candidate.TargetId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                                LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
                             }
                             if (opportunistic.Count > 0)
                             {
-                                _logger.Debug("Sampler", "  [{0}] ---- opportunistic evidence below (not scored, informational only) ----", candidate.TargetId);
+                                _logger.Debug("Sampler", "  [{0}] ---- opportunistic evidence below (not scored, informational only) ----", FormatCandidateLabel(candidate, nameCounts));
                                 foreach (var record in opportunistic)
                                 {
-                                    LogEvidence(candidate.TargetId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                                    LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
                                 }
-                                _logger.Debug("Sampler", "  [{0}] ---- end opportunistic evidence ----", candidate.TargetId);
+                                _logger.Debug("Sampler", "  [{0}] ---- end opportunistic evidence ----", FormatCandidateLabel(candidate, nameCounts));
                             }
                         }
                         // Added 2026-07-23: round-based collectors (currently just
@@ -153,6 +166,11 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         // the next round's API call (e.g. the next recording's
                         // GetRelationships) genuinely never fires. See
                         // IRoundBasedObservationEvidenceCollector's own doc comment.
+                        //
+                        // NOTE 2026-07-27: round dictionaries are keyed by Candidate.Id (the
+                        // internal GUID, matching evidenceByCandidate's key), NOT TargetId --
+                        // candidatesById below maps that back to the real Candidate so the log
+                        // line can show a name instead of a meaningless GUID.
                         bool stoppedMidObservation = false;
                         foreach (var collector in _roundBasedCollectors)
                         {
@@ -162,17 +180,18 @@ namespace MetadataHealthCheck.v2.Core.Engine
                                 {
                                     var candidateId = roundKvp.Key;
                                     var records = roundKvp.Value;
+                                    var roundCandidate = candidatesById[candidateId];
                                     foreach (var record in records.Where(r => r.Contributing))
                                     {
                                         evidenceByCandidate[candidateId].Add(record);
                                         repository.SaveEvidence(record);
-                                        LogEvidence(candidateId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                                        LogEvidence(roundCandidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
                                     }
                                     foreach (var record in records.Where(r => !r.Contributing))
                                     {
                                         evidenceByCandidate[candidateId].Add(record);
                                         repository.SaveEvidence(record);
-                                        LogEvidence(candidateId, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
+                                        LogEvidence(roundCandidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
                                     }
                                 }
 
@@ -198,13 +217,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
                         if (decision.Status != "needs_review")
                         {
-                            // Deliberately doesn't state decision.Status/Confidence here
-                            // (2026-07-17) -- StructuredLogger has no level filtering, so
-                            // "Debug" doesn't actually suppress a line, it only relabels
-                            // it. The real fix is not stating the outcome at all until
-                            // SmokeTest/Program.cs's own dedicated "STAGE: decision" ->
-                            // PrintDecision step. This line only reports the mechanical
-                            // fact of when/why sampling stopped.
                             _logger.Debug("Sampler", "{0}: stopped sampling after {1} observation(s) in bucket {2} (a decision threshold was crossed).", source.DisplayName, drawn, unit.BucketKey);
                             return decision;
                         }
@@ -216,9 +228,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
             return decision;
         }
 
-        // Visual banner around each phase/observation so the eye can find phase
-        // boundaries in a long log without parsing text. Added 2026-07-17 per
-        // direct instruction.
         private void Banner(string label)
         {
             _logger.Info("Sampler", "================================================================");
@@ -226,40 +235,36 @@ namespace MetadataHealthCheck.v2.Core.Engine
             _logger.Info("Sampler", "================================================================");
         }
 
-        // A single evidence line, clearly marked [opportunistic - not scored] when
-        // Contributing is false (2026-07-17 directive: opportunistic evidence is
-        // logged for later "does it add value" analysis, but must never be
-        // mistaken for something that influenced the decision).
-        private void LogEvidence(string candidateId, EvidenceRecord record, ScoringConfig config, string prefix, string indent, string? bucketKey = null)
+        // Added 2026-07-27: human-readable candidate label for logging only -- never
+        // used for identity/matching decisions. Falls back to the MBID when Name is
+        // unset (e.g. Strategy A candidates, which don't currently carry a name), and
+        // only appends "|MBID" when two live candidates in THIS resolution share the
+        // same display name.
+        private static string FormatCandidateLabel(Candidate candidate, Dictionary<string, int> nameCounts)
+        {
+            var label = string.IsNullOrEmpty(candidate.Name) ? candidate.TargetId : candidate.Name;
+            return nameCounts.TryGetValue(label, out var count) && count > 1
+                ? $"{label}|{candidate.TargetId}"
+                : label;
+        }
+
+        private void LogEvidence(Candidate candidate, Dictionary<string, int> nameCounts, EvidenceRecord record, ScoringConfig config, string prefix, string indent, string? bucketKey = null)
         {
             var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
             var bucketPart = bucketKey != null ? $" {bucketKey}" : "";
+            var label = FormatCandidateLabel(candidate, nameCounts);
             if (record.Contributing)
             {
-                _logger.Debug("Sampler", "{0}[{1}] {2}{3} (weight={4}){5} :: {6}", indent, candidateId, prefix, record.EvidenceType, weight, bucketPart, record.Rationale);
+                _logger.Debug("Sampler", "{0}[{1}] {2}{3} (weight={4}){5} :: {6}", indent, label, prefix, record.EvidenceType, weight, bucketPart, record.Rationale);
             }
             else
             {
-                _logger.Debug("Sampler", "{0}[{1}] {2}{3} [opportunistic - not scored]{4} :: {5}", indent, candidateId, prefix, record.EvidenceType, bucketPart, record.Rationale);
+                _logger.Debug("Sampler", "{0}[{1}] {2}{3} [opportunistic - not scored]{4} :: {5}", indent, label, prefix, record.EvidenceType, bucketPart, record.Rationale);
             }
         }
 
-        // Final, unambiguous statement of what actually drove the decision --
-        // contributing evidence only, opportunistic evidence deliberately omitted
-        // here (it's already visible inline, tagged, above). 2026-07-17 directive.
-        // NOTE 2026-07-17: an internal LogDecisionSummary used to fire here, inline,
-        // the moment Resolve() finished. Removed -- it duplicated and, worse,
-        // pre-empted SmokeTest/Program.cs's own "STAGE: artist evidence summary" ->
-        // "STAGE: decision" sequence, making the decision appear to print BEFORE the
-        // evidence summary in the smoke test output. The decision-after-evidence
-        // summary now lives solely in SmokeTest/Program.cs (PrintScoreboard then
-        // PrintDecision), which already had the ordering right.
-
         private MatchResult ScoreAndDecide(TSourceEntity source, List<Candidate> candidates, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, ScoringConfig config)
         {
-            // Contributing=false (opportunistic) evidence is logged and saved for
-            // later "does it add value" analysis but must NEVER affect the actual
-            // decision -- see EvidenceRecord.Contributing, 2026-07-17 directive.
             var scored = candidates.Select(c => _scorer.Score(c, evidenceByCandidate[c.Id].Where(e => e.Contributing), config)).ToList();
             return _decisionGate.Decide(scored, config, source.SourceSystem, source.SourceId);
         }
