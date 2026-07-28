@@ -27,7 +27,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // Added 2026-07-19: title + MusicBrainz's own qdur field, tried once BOTH
         // TrackArtist and TrackAlbum have failed -- i.e. once the observation has
         // given up on album and artist strings both being trustworthy narrowing
-        // fields. See ConfirmAtRungByFrequency below: unlike every other rung, this
+        // fields. See RoundsForDurationRung below: unlike every other rung, this
         // one's confirmation walk is ordered by artist-recording-frequency within
         // the qdur-narrowed result set, not richness -- duration alone can't
         // disambiguate correctness the way a name/album field can, so frequency
@@ -46,7 +46,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // rather than left flagged, since both zero-caller checks came back clean.
         // Composer-bucket observations' relationship confirmation is handled the
         // same way as every other bucket's: inline GetRelationships scanning inside
-        // ConfirmAtRung / ConfirmAtRungByFrequency, within rungs 1-5 above.
+        // RoundsForRung / RoundsForDurationRung, within rungs 1-5 above.
     }
 
     /// <summary>
@@ -465,13 +465,28 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 }
                 foreach (var mbid in confirmedThisRecording.Keys) pending.Remove(mbid);
                 if (confirmedThisRecording.Count > 0)
+                {
                     yield return new RecordingLookupRoundResult { NewlyConfirmed = confirmedThisRecording, RoundDescription = $"{rung} (relationship scan, recordingId={rec.RecordingId})" };
+
+                    // Settled directive 2026-07-28: STOP here, do not advance to the next
+                    // recording, even if candidates remain pending. Every still-pending
+                    // candidate was already checked against THIS recording (for free,
+                    // same GetRelationships call) and did not confirm -- that is a real
+                    // "no match at this rung" result for them, not "not yet tried". Any
+                    // candidate that only matched a LATER recording in richness order
+                    // would be matching a different recording than the one that already
+                    // confirmed someone else, which is a false-positive risk (cover
+                    // version, reissue with different personnel), not corroboration of
+                    // the same fact. Remaining pending candidates simply get another
+                    // chance from the top rung on the next observation (next track).
+                    yield break;
+                }
             }
         }
 
         // TrackDuration's round-based variant -- same cheap-then-expensive shape as
         // RoundsForRung, but walked in artist-frequency order (falling back to richness
-        // order when the lead isn't meaningful), mirroring ConfirmAtRungByFrequency.
+        // order when the lead isn't meaningful).
         // ConfirmationMode parameter added 2026-07-27 -- see RoundsForRung's comment
         // directly above; same walled-off gating applied here, not repeated in full.
         private IEnumerable<RecordingLookupRoundResult> RoundsForDurationRung(EmbyTrackCredit track, HashSet<string> pending, IReadOnlyDictionary<string, IReadOnlyList<string>> relationshipMbidsByCandidate, ConfirmationMode mode)
@@ -556,7 +571,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 }
                 foreach (var mbid in confirmedThisRecording.Keys) pending.Remove(mbid);
                 if (confirmedThisRecording.Count > 0)
+                {
                     yield return new RecordingLookupRoundResult { NewlyConfirmed = confirmedThisRecording, RoundDescription = $"TrackDuration (relationship scan, recordingId={rec.RecordingId})" };
+
+                    // Settled directive 2026-07-28 -- see companion comment on
+                    // RoundsForRung's own relationship-scan loop above: stop the walk
+                    // the moment any recording yields a confirmation, rather than
+                    // advancing to the next recording for still-pending candidates.
+                    yield break;
+                }
             }
         }
 
@@ -621,83 +644,6 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 ranked.Count > 0 ? ranked[0].Count : 0);
 
             return result;
-        }
-
-        // The TrackDuration rung's confirmation walk (§7.2 "Bohemian Rhapsody" trace,
-        // artist-frequency proposal): unlike the other rungs' richness-ordered walk,
-        // this orders the duration-narrowed result set by artist-recording-frequency
-        // (which artist has the most recordings clustered at this title+duration --
-        // a real cover is typically a one-off, while the correct artist for a
-        // well-covered song tends to have many: studio + live + reissues). Frequency
-        // is only trusted as a signal if the leader clears
-        // ScoringConfig.TrackDurationMinArtistLead over the second-place artist;
-        // otherwise this rung falls through to TrackOnly exactly as if it had found
-        // nothing, rather than acting on a meaningless 1-vs-0 "lead". Still routes
-        // through the same ArtistMbid/relationship-scan confirmation checks as every
-        // other rung -- frequency changes WALK ORDER only, never bypasses
-        // confirmation itself.
-        private RecordingLookupResult? ConfirmAtRungByFrequency(string candidateMbid, IReadOnlyList<string> relationshipMbids, EmbyTrackCredit track)
-        {
-            var data = GetOrBuildDurationRungData(track);
-
-            bool leadIsMeaningful = data.RankedArtists.Count >= 1 &&
-                (data.RankedArtists.Count == 1 || data.RankedArtists[0].Count - data.RankedArtists[1].Count >= _config.TrackDurationMinArtistLead);
-
-            if (!leadIsMeaningful)
-            {
-                _logger?.Debug("RecordingLookup", "[TrackDuration] \"{0}\" -- artist-frequency lead below TrackDurationMinArtistLead ({1}), not trusting frequency ordering; falling through to richness order.",
-                    track.TrackName, _config.TrackDurationMinArtistLead);
-            }
-
-            var rankPosition = data.RankedArtists
-                .Select((x, i) => (x.ArtistMbid, Rank: i))
-                .ToDictionary(x => x.ArtistMbid, x => x.Rank);
-
-            var survivors = data.Recordings
-                .OrderBy(r => leadIsMeaningful && rankPosition.TryGetValue(r.ArtistMbid, out var rank) ? rank : int.MaxValue)
-                .ThenBy(r => RichnessRank(r))
-                .ToList();
-
-            foreach (var rec in survivors)
-            {
-                // Match either the recording's own (track-level) artist credit -- ANY
-                // credited artist, per ArtistMbids, not just the first-listed one
-                // (bugfix 2026-07-28, see companion comment on the rung-based
-                // confirmation block earlier in this file) -- or ANY release-level
-                // artist credit ("album artist") this recording carries across all its
-                // releases, see MbRecordingResult.ReleaseAlbumArtistMbids doc comment.
-                //
-                // Removed 2026-07-28 (settled directive): a name-check used to run here
-                // too -- see companion comment on the rung-based confirmation block
-                // earlier in this file. MBID equality below is the confirmation.
-                if (rec.ArtistMbids.Contains(candidateMbid) || rec.ReleaseAlbumArtistMbids.Contains(candidateMbid))
-                {
-                    return new RecordingLookupResult
-                    {
-                        Recording = rec,
-                        RungReached = RecordingLookupRung.TrackDuration,
-                        MatchedViaAlias = false,
-                        ConfirmedViaRelationship = false,
-                    };
-                }
-
-                _logger?.Info("RecordingLookup", "[{0}] recordingId={1} -- relationship scan for candidate confirmation (rung={2}, artist-frequency order).", candidateMbid, rec.RecordingId, RecordingLookupRung.TrackDuration);
-                var rels = _client.GetRelationships(rec.RecordingId);
-                var confirming = rels.FirstOrDefault(r => r.ArtistMbid == candidateMbid || relationshipMbids.Contains(r.ArtistMbid));
-                if (confirming != null)
-                {
-                    return new RecordingLookupResult
-                    {
-                        Recording = rec,
-                        RungReached = RecordingLookupRung.TrackDuration,
-                        MatchedViaAlias = false,
-                        ConfirmedViaRelationship = true,
-                        ConfirmingRelationship = confirming,
-                    };
-                }
-            }
-
-            return null;
         }
 
         // Duration gate (§ settled directive 2026-07-18): keeps a recording if its own
@@ -785,7 +731,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // class doc comment) and FindConfirmedByRelationship was used only by that
         // dead path. Composer-bucket relationship confirmation is handled the same
         // way as every other bucket's: inline GetRelationships scanning inside
-        // ConfirmAtRung / ConfirmAtRungByFrequency above.
+        // RoundsForRung / RoundsForDurationRung above.
         //
         // The one thing this method used to add beyond the unified ladder -- a
         // "borrowed-name" rung (trying a co-credited real performer's name as search
