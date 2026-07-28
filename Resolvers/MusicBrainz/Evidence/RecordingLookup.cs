@@ -372,9 +372,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 _logger?.Debug("RecordingLookup", "[{0}] richness order for {1} duration-gate survivor(s):", rung, survivors.Count);
                 foreach (var s in survivors)
                 {
-                    _logger?.Debug("RecordingLookup", "     rank={0,4}  recordingId={1}  status={2}  type={3}  secondaryTypes=[{4}]  releases={5}",
+                    _logger?.Debug("RecordingLookup", "     rank={0,4}  recordingId={1}  status={2}  type={3}  secondaryTypes=[{4}]  releases={5}  albumArtist={6}",
                         RichnessRank(s), s.RecordingId, s.ReleaseStatus ?? "(none)", s.ReleaseGroupPrimaryType ?? "(none)",
-                        string.Join(", ", s.ReleaseGroupSecondaryTypes), s.ReleaseCount);
+                        string.Join(", ", s.ReleaseGroupSecondaryTypes), s.ReleaseCount, s.ReleaseAlbumArtistCreditText ?? "(none)");
                 }
             }
 
@@ -679,6 +679,11 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             });
         }
 
+        // MusicBrainz's canonical "Various Artists" artist MBID -- fixed across the
+        // whole database, not a per-install config value. Used to detect genuine
+        // Various-Artists compilations (settled directive 2026-07-28, see RichnessRank).
+        private const string VariousArtistsMbid = "89ad4ac3-39f7-470e-963a-56509c546377";
+
         // Richness ranking (§ settled directive 2026-07-18): WALK ORDER among
         // duration-gate survivors only -- decides which recording is worth spending
         // the first relationship-fetch call scanning, never correctness. Lower rank
@@ -705,8 +710,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
             // Secondary types (Live/Compilation/Bootleg-adjacent) push an otherwise
             // studio-looking release further back -- e.g. a "Live" Album is worth less
             // than a plain studio Album for relationship-data richness purposes.
-            if (r.ReleaseGroupSecondaryTypes.Contains("Compilation", StringComparer.OrdinalIgnoreCase)
-                || r.ReleaseGroupSecondaryTypes.Contains("Live", StringComparer.OrdinalIgnoreCase))
+            // Compilation is the one exception (settled directive 2026-07-28): the
+            // penalty exists because Various-Artists compilations were estimated to be
+            // less likely to carry populated relationship data -- not because
+            // "Compilation" itself implies a lesser release. An artist's OWN
+            // compilation (e.g. a reissue/anthology) is just as likely to be
+            // well-indexed as a studio album, so the penalty only applies when the
+            // release's own artist credit is actually "Various Artists".
+            bool isVariousArtistsCompilation =
+                r.ReleaseGroupSecondaryTypes.Contains("Compilation", StringComparer.OrdinalIgnoreCase)
+                && (r.ReleaseAlbumArtistMbid == VariousArtistsMbid
+                    || (r.ReleaseAlbumArtistCreditText ?? "").Trim().Equals("Various Artists", StringComparison.OrdinalIgnoreCase));
+
+            bool isLive = r.ReleaseGroupSecondaryTypes.Contains("Live", StringComparer.OrdinalIgnoreCase);
+
+            if (isVariousArtistsCompilation || isLive)
             {
                 typeRank += 2;
             }

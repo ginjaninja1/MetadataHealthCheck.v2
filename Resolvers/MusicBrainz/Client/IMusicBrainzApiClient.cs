@@ -79,6 +79,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         public string? ReleaseGroupPrimaryType { get; set; }     // "Album" | "EP" | "Single" | null
         public List<string> ReleaseGroupSecondaryTypes { get; set; } = new();  // e.g. "Live", "Compilation"
         public int ReleaseCount { get; set; }                     // number of distinct releases this recording appears on
+
+        // Added 2026-07-28: release-LEVEL artist credit (MusicBrainz's actual "album
+        // artist" concept), distinct from ArtistMbid/ArtistCreditText above which are
+        // the recording/track-level credit. Needed so RichnessRank can tell a genuine
+        // Various-Artists compilation (which really is less likely to carry populated
+        // relationship data) apart from an ordinary studio album that merely carries
+        // the "Compilation" secondary type for other MB-cataloguing reasons.
+        public string? ReleaseAlbumArtistMbid { get; set; }
+        public string? ReleaseAlbumArtistCreditText { get; set; }
     }
 
     // Relationship level per §7.2 C5: work-level (writer/composer/lyricist/librettist,

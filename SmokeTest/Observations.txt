@@ -36,6 +36,19 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST b0cd083f726e45d7a9865f26f5ebb769 "Bob Horn"
+TRACK b6de52d994c00602da343139045504fc "Bandstand Boogie"
+ALBUM 255641 "Ultimate Manilow"
+DURATION_MS 170501
+PROVIDERIDS MusicBrainzAlbumArtist=7bb60591-46f3-4147-b692-1814a87e832e,MusicBrainzArtist=7bb60591-46f3-4147-b692-1814a87e832e,MusicBrainzAlbum=043af7ef-d6fa-4c2a-95b3-22014c1c299e,MusicBrainzReleaseGroup=d46d9632-a58f-3b34-b91d-9ab7fd4aca93,MusicBrainzTrack=a31c98b9-a5e4-375e-932f-84a771e07fe9
+ALBUMARTIST "Barry Manilow" mbid=7bb60591-46f3-4147-b692-1814a87e832e
+ARTIST "Barry Manilow" mbid=7bb60591-46f3-4147-b692-1814a87e832e
+COMPOSER "Charles Albertine" mbid=ba9b0cac-8102-40dd-8e84-defd8bc090bc
+COMPOSER "Larry Elgart" mbid=74c92a31-b350-46b1-962a-429721cafd80
+COMPOSER "Bob Horn" mbid=b3cba8d9-2868-48ef-a36a-32ce8f8c1fc4
+
+
+
 ARTIST 696abde9c6544da88115f0b4ea1f6b7d "Axel Stordahl"
 TRACK f4ac531d7b70f42670aa5c67b703f1f7 "Day by Day"
 ALBUM 255344 "The Shadow of Your Smile"

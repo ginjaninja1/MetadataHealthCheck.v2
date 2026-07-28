@@ -183,6 +183,28 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             return url;
         }
 
+        // Added 2026-07-28: extracts the release-LEVEL artist credit (MusicBrainz's
+        // actual "album artist") from a representative release, shared by both
+        // SearchRecording and SearchRecordingByTitleAndDuration. Mirrors the
+        // recording-level artist-credit parsing above, but on ReleaseDto.ArtistCredit
+        // instead of RecordingDto.ArtistCredit. Same first-credited-artist limitation
+        // as the recording-level parse.
+        private static (string? Mbid, string? CreditText) ParseReleaseAlbumArtist(ReleaseDto? release)
+        {
+            if (release?.ArtistCredit == null || release.ArtistCredit.Count == 0)
+                return (null, null);
+
+            string? mbid = null;
+            var names = new List<string>();
+            foreach (var c in release.ArtistCredit)
+            {
+                names.Add(c.Name ?? "");
+                if (mbid == null && c.Artist?.Id != null)
+                    mbid = c.Artist.Id;
+            }
+            return (mbid, string.Join("", names));
+        }
+
         public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null)
         {
             var (url, callDesc) = BuildSearchRecordingQuery(trackTitle, albumTitle, artistNames);
@@ -224,6 +246,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                     // which represents something else -- how many times the recording's
                     // title occurs within that one release's own tracklist).
                     var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
+                    var (releaseAlbumArtistMbid, releaseAlbumArtistCreditText) = ParseReleaseAlbumArtist(representativeRelease);
 
                     results.Add(new MbRecordingResult
                     {
@@ -240,6 +263,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         ReleaseGroupPrimaryType = representativeRelease?.ReleaseGroup?.PrimaryType,
                         ReleaseGroupSecondaryTypes = representativeRelease?.ReleaseGroup?.SecondaryTypes ?? new List<string>(),
                         ReleaseCount = r.Releases?.Count ?? 0,
+                        ReleaseAlbumArtistMbid = releaseAlbumArtistMbid,
+                        ReleaseAlbumArtistCreditText = releaseAlbumArtistCreditText,
                     });
                 }
             }
@@ -334,6 +359,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                     }
 
                     var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
+                    var (releaseAlbumArtistMbid, releaseAlbumArtistCreditText) = ParseReleaseAlbumArtist(representativeRelease);
 
                     results.Add(new MbRecordingResult
                     {
@@ -350,6 +376,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         ReleaseGroupPrimaryType = representativeRelease?.ReleaseGroup?.PrimaryType,
                         ReleaseGroupSecondaryTypes = representativeRelease?.ReleaseGroup?.SecondaryTypes ?? new List<string>(),
                         ReleaseCount = r.Releases?.Count ?? 0,
+                        ReleaseAlbumArtistMbid = releaseAlbumArtistMbid,
+                        ReleaseAlbumArtistCreditText = releaseAlbumArtistCreditText,
                     });
                 }
             }
@@ -627,6 +655,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             // Added 2026-07-18: richness signals only, see MbRecordingResult doc comment.
             [DataMember(Name = "status")] public string? Status { get; set; }
             [DataMember(Name = "release-group")] public ReleaseGroupDto? ReleaseGroup { get; set; }
+            // Added 2026-07-28: release-level artist-credit -- MusicBrainz's actual
+            // "album artist" (distinct from RecordingDto.ArtistCredit above, which is
+            // the recording/track-level credit). See MbRecordingResult.ReleaseAlbumArtistMbid.
+            [DataMember(Name = "artist-credit")] public List<ArtistCreditDto>? ArtistCredit { get; set; }
         }
 
         [DataContract]
