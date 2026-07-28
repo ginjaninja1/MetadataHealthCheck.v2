@@ -253,6 +253,45 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                 }
             }
 
+            // MIRROR PRUNE PASS: a candidate's RelationshipMbids can point at another
+            // MBID that is ITSELF a live admitted candidate in this same resolution
+            // (e.g. a person and the band they're a member of, both admitted
+            // separately because the fold pass above correctly does NOT fold
+            // GroupMembership links). Left unpruned, that mirrored MBID lets the
+            // orchestra/group candidate piggyback on the SAME recording-relationship
+            // evidence as the person -- both "confirm" via one real corroborating
+            // fact, producing a false tie. Once a related MBID is confirmed to be a
+            // live candidate here, it stops being useful as a corroboration proxy for
+            // recording-side evidence and is dropped. GroupMembershipMbids (used by
+            // ComposerBucketCandidateFilter) is a separate field and is NOT touched by
+            // this pass -- that consumer needs the group->person link to survive even
+            // when the person is a live candidate.
+            //
+            // Deliberately NOT recorded via context.FoldNotes/CandidateFoldOccurred:
+            // unlike the identity fold above, this doesn't merge two hypotheses into
+            // one -- the candidates remain genuinely independent competitors, this
+            // just stops one relationship fact from scoring as evidence for both.
+            var liveCandidateIds = new HashSet<string>(finalCandidates.Where((c, idx) => !folded[idx]).Select(c => c.TargetId));
+            var prunedNamesByCandidate = new List<string>[finalCandidates.Count];
+            for (int i = 0; i < finalCandidates.Count; i++)
+            {
+                prunedNamesByCandidate[i] = new List<string>();
+                if (folded[i]) continue;
+                var candidate = finalCandidates[i];
+                var mirrored = candidate.RelationshipMbids.Where(m => liveCandidateIds.Contains(m)).ToList();
+                if (mirrored.Count == 0) continue;
+
+                candidate.RelationshipMbids = candidate.RelationshipMbids.Where(m => !liveCandidateIds.Contains(m)).ToList();
+                foreach (var m in mirrored)
+                {
+                    var mirroredName = relationshipNamesByCandidate[i].FirstOrDefault(r => r.Mbid == m).Name ?? m;
+                    prunedNamesByCandidate[i].Add(mirroredName);
+                    _logger?.Info("ArtistCandidateGen",
+                        "  [{0}] \"{1}\" -- pruned mirrored relationship MBID [{2}] \"{3}\" from RelationshipMbids: that MBID is itself a live candidate in this resolution, so it can't corroborate recording evidence without double-counting.",
+                        candidate.TargetId, candidate.Name, m, mirroredName);
+                }
+            }
+
             _logger?.Info("ArtistCandidateGen", "================================================================");
             _logger?.Info("ArtistCandidateGen", "Artist Candidate Summary");
             _logger?.Info("ArtistCandidateGen", "================================================================");
@@ -264,8 +303,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     ? "(none)"
                     : string.Join(", ", relationshipNamesByCandidate[i].Select(r => r.Name));
                 var foldedSuffix = folded[i] ? "  [FOLDED -- excluded from sampling, see fold pass log above]" : "";
-                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} aliases=[{3}] relationships=[{4}]{5}",
-                    result.Mbid, result.Name, result.Score, aliasText, relText, foldedSuffix);
+                var prunedSuffix = prunedNamesByCandidate[i].Count == 0 ? "" : $"  [MIRROR-PRUNED from scoring: {string.Join(", ", prunedNamesByCandidate[i])}]";
+                _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} aliases=[{3}] relationships=[{4}]{5}{6}",
+                    result.Mbid, result.Name, result.Score, aliasText, relText, foldedSuffix, prunedSuffix);
             }
             _logger?.Info("ArtistCandidateGen", "================================================================");
 
