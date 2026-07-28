@@ -47,9 +47,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
     ///      answered here (flagged, not decided): tier-first is the safer default
     ///      pending real resolution volume to test it against.
     ///
-    /// RESOLVED 2026-07-18: ArtistCandidateMinScore's default is now 67 (Nick's
-    /// confirmed preferred threshold), set in ScoringConfig.cs. The score-only
-    /// admission mechanism below simply uses whatever this is configured to.
+    /// RESOLVED 2026-07-18: ArtistCandidateMinScore's default was set to 67 (Nick's
+    /// confirmed preferred threshold) in ScoringConfig.cs -- FLAGGED 2026-07-27: the
+    /// literal default in ScoringConfig.cs today is actually 80, not 67. This
+    /// comment is not the source of truth; check ScoringConfig.cs directly and
+    /// reconcile which value is intended.
+    ///
+    /// CHANGED 2026-07-27: admission is no longer score-only. A result is now
+    /// admitted if EITHER its MB score clears ArtistCandidateMinScore OR it's an
+    /// exact normalized-name match (MatchTier.Name) regardless of score -- an exact
+    /// name hit should never be dropped for a middling MB relevance score.
     ///
     /// Strategy B (§5.3): used when no own anchor (Strategy A) and, in later
     /// phases, no borrowed anchor (Strategy C) is available.
@@ -119,7 +126,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
             var cgConfig = _config.CandidateGeneration;
             var normalizedSource = ArtistNameNormalizer.Normalize(source.DisplayName, cgConfig.NameNormalizationRules);
 
-            _logger?.Info("ArtistCandidateGen", "[{0}] Filtering {1} artist search result(s) by MB score (>= {2})...", source.DisplayName, artistResults.Count, cgConfig.ArtistCandidateMinScore);
+            _logger?.Info("ArtistCandidateGen", "[{0}] Filtering {1} artist search result(s) by MB score (>= {2}) OR exact normalized name match...", source.DisplayName, artistResults.Count, cgConfig.ArtistCandidateMinScore);
 
             var admitted = new List<(MbArtistResult Result, MatchTier Tier)>();
             var seen = new HashSet<string>();
@@ -131,13 +138,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     continue;
                 }
 
-                if (result.Score < cgConfig.ArtistCandidateMinScore)
+                var tier = ClassifyMatchTier(normalizedSource, result, cgConfig);
+
+                // Changed 2026-07-27: admission is now score>=threshold OR an exact
+                // normalized-name match (MatchTier.Name), not score alone -- an exact
+                // name hit should never be dropped just for a middling MB relevance
+                // score. Reuses ClassifyMatchTier's own exact-match detection rather
+                // than a second, possibly-diverging distance check.
+                if (result.Score < cgConfig.ArtistCandidateMinScore && tier != MatchTier.Name)
                 {
-                    _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} -- DROPPED: below ArtistCandidateMinScore ({3}).", result.Mbid, result.Name, result.Score, cgConfig.ArtistCandidateMinScore);
-                    continue; // MB's own text-relevance score too low to consider, §5.4
+                    _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} tier={3} -- DROPPED: below ArtistCandidateMinScore ({4}) and not an exact name match.", result.Mbid, result.Name, result.Score, tier, cgConfig.ArtistCandidateMinScore);
+                    continue;
                 }
 
-                var tier = ClassifyMatchTier(normalizedSource, result, cgConfig);
                 _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} tier={3} -- ADMITTED as a candidate.", result.Mbid, result.Name, result.Score, tier);
                 admitted.Add((result, tier));
             }

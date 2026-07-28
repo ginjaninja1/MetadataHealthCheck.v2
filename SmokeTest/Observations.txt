@@ -36,6 +36,36 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST 696abde9c6544da88115f0b4ea1f6b7d "Axel Stordahl"
+TRACK f4ac531d7b70f42670aa5c67b703f1f7 "Day by Day"
+ALBUM 255344 "The Shadow of Your Smile"
+DURATION_MS 127399
+PROVIDERIDS MusicBrainzAlbumArtist=8d08cabf-03a3-4f38-a815-8197a0984f19,MusicBrainzArtist=8d08cabf-03a3-4f38-a815-8197a0984f19,MusicBrainzAlbum=a6b0ced1-9027-4ece-95ee-393278d8478c,MusicBrainzReleaseGroup=773304f4-39e4-3a33-8b6b-6b2891f4ed76,MusicBrainzTrack=602c2ebe-63fe-34f2-9eee-2c0896c79821
+ALBUMARTIST "Astrud Gilberto" mbid=8d08cabf-03a3-4f38-a815-8197a0984f19
+ARTIST "Astrud Gilberto" mbid=8d08cabf-03a3-4f38-a815-8197a0984f19
+COMPOSER "Axel Stordahl" mbid=ef2841a0-448d-4691-9f10-2527a8fa7931
+COMPOSER "Paul Weston" mbid=d56d5118-77f4-4f5d-8997-813e4670806a
+
+TRACK f7693e39c9b34c7640bfc39e2e24e4e4 "I Should Care"
+ALBUM 255058 "Amy Winehouse at the BBC"
+DURATION_MS 219026
+PROVIDERIDS MusicBrainzAlbumArtist=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3,MusicBrainzArtist=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3,MusicBrainzAlbum=302ae914-42d3-46ec-8a0d-1df2d514041c,MusicBrainzReleaseGroup=ea0ce6b1-9842-4a39-bbcc-d953fad2d2bc,MusicBrainzTrack=14348df6-3db5-3e64-80b2-3f0702be50ce
+ALBUMARTIST "Amy Winehouse" mbid=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3
+ARTIST "Amy Winehouse" mbid=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3
+COMPOSER "Sammy Cahn" mbid=5fd5aa4f-02b0-4747-ad4c-8a3b4f0f3f79
+COMPOSER "Axel Stordahl" mbid=ef2841a0-448d-4691-9f10-2527a8fa7931
+COMPOSER "Paul Weston" mbid=d56d5118-77f4-4f5d-8997-813e4670806a
+
+TRACK 9a19d0cad5fa880b9e21c9493aaf693c "Day by Day"
+ALBUM 255335 "Verve Jazz Masters 9"
+DURATION_MS 127373
+PROVIDERIDS MusicBrainzAlbumArtist=8d08cabf-03a3-4f38-a815-8197a0984f19,MusicBrainzArtist=8d08cabf-03a3-4f38-a815-8197a0984f19,MusicBrainzAlbum=7df0bd69-be2b-3009-b433-bff6de66493a,MusicBrainzReleaseGroup=100a882a-49f3-3748-aeca-0f902b3a3fe9,MusicBrainzTrack=88f4abbc-ad00-3f7c-9b7a-83d0cee86ddb
+ALBUMARTIST "Astrud Gilberto" mbid=8d08cabf-03a3-4f38-a815-8197a0984f19
+ARTIST "Astrud Gilberto" mbid=8d08cabf-03a3-4f38-a815-8197a0984f19
+COMPOSER "Axel Stordahl" mbid=ef2841a0-448d-4691-9f10-2527a8fa7931
+COMPOSER "Paul Weston" mbid=d56d5118-77f4-4f5d-8997-813e4670806a
+
+
 ARTIST 9850eb9072694700bf2b8d4becb806c9 "Alex Chilton"
 TRACK 66cf0702b397e50e6e566badc22b0e93 "Holocaust"
 ALBUM 274642 "Acoustic"
