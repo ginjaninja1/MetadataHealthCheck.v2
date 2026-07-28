@@ -53,7 +53,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
                 _repository.SaveCandidate(candidate);
 
             var sampler = new SequentialSampler<Sources.Emby.EmbyArtist>(
-                _plugin.EvidenceCollectors,
                 _plugin.ObservationEvidenceCollectors,
                 _plugin.RoundBasedObservationEvidenceCollectors,
                 _plugin.ObservationUnitProvider,

@@ -36,6 +36,79 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST 2c6856c640964371bfe4bb8f102284ed "Michael Anthony"
+TRACK 742dc7312fbbc05f3d20624d8b47a481 "Ain't Talkin 'bout Love"
+ALBUM 270657 "The Best Heavy Metal Album in the World... Ever!"
+DURATION_MS 229929
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=b665b768-0d83-4363-950c-31ed39317c15,MusicBrainzAlbum=653fa5c8-f262-41a3-94d8-4e98de89edf7,MusicBrainzReleaseGroup=dd9e2d2c-0135-3f5d-99bc-ede22ccffe1c,MusicBrainzTrack=ba59bd24-6a44-366d-87c0-e2f1ef8cb793
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "Van Halen" mbid=b665b768-0d83-4363-950c-31ed39317c15
+COMPOSER "Michael Anthony" mbid=140407da-0172-47c6-a252-49b89553aa00
+COMPOSER "David Lee Roth" mbid=802d37d5-0aaa-492e-b366-99f75e5a196f
+COMPOSER "Alex Van Halen" mbid=e90678bc-3c05-477a-b171-dd349f320d55
+COMPOSER "Eddie Van Halen" mbid=2a66baa5-9832-4fbc-8365-c9f607a89e47
+
+TRACK 8632fa6aa941594515a6cffd57052223 "Jump"
+ALBUM 255497 "Walk Out to Winter: The Best of Aztec Camera"
+DURATION_MS 170920
+PROVIDERIDS MusicBrainzAlbumArtist=53578264-7436-437b-87a0-3b034a3661f0,MusicBrainzArtist=53578264-7436-437b-87a0-3b034a3661f0,MusicBrainzAlbum=df76deaa-5438-4365-9015-79ff5debb8e8,MusicBrainzReleaseGroup=39b7cda2-1926-4e7e-bde6-f94537b70dd9,MusicBrainzTrack=702e2db8-398b-3e2a-9d50-c1f87ab285e6
+ALBUMARTIST "Aztec Camera" mbid=53578264-7436-437b-87a0-3b034a3661f0
+ARTIST "Aztec Camera" mbid=53578264-7436-437b-87a0-3b034a3661f0
+COMPOSER "Michael Anthony" mbid=140407da-0172-47c6-a252-49b89553aa00
+COMPOSER "David Lee Roth" mbid=802d37d5-0aaa-492e-b366-99f75e5a196f
+COMPOSER "Alex Van Halen" mbid=e90678bc-3c05-477a-b171-dd349f320d55
+COMPOSER "Eddie Van Halen" mbid=2a66baa5-9832-4fbc-8365-c9f607a89e47
+
+TRACK 85009b2478f0972f3ea791cbb9e4b578 "Ain't Talkin' 'Bout Love (live)"
+ALBUM 277873 "The Best of Both Worlds"
+DURATION_MS 283036
+PROVIDERIDS MusicBrainzAlbumArtist=b665b768-0d83-4363-950c-31ed39317c15,MusicBrainzArtist=b665b768-0d83-4363-950c-31ed39317c15,MusicBrainzAlbum=190bff65-af5c-3791-adf2-5b1d6e7424af,MusicBrainzReleaseGroup=1e275787-073e-3077-be8f-d9c43ec6df5a,MusicBrainzTrack=e6ce42cb-b55a-350c-9388-0c828eed8ada
+ALBUMARTIST "Van Halen" mbid=b665b768-0d83-4363-950c-31ed39317c15
+ARTIST "Van Halen" mbid=b665b768-0d83-4363-950c-31ed39317c15
+COMPOSER "Michael Anthony" mbid=140407da-0172-47c6-a252-49b89553aa00
+COMPOSER "David Lee Roth" mbid=802d37d5-0aaa-492e-b366-99f75e5a196f
+COMPOSER "Alex Van Halen" mbid=e90678bc-3c05-477a-b171-dd349f320d55
+COMPOSER "Eddie Van Halen" mbid=2a66baa5-9832-4fbc-8365-c9f607a89e47
+
+
+
+ARTIST e0781927f59d414db892e4f5c6904dfa "David Palmer"
+TRACK c410dcecda3db27e224a4f4e1d8b9e17 "The Look of Love (1990 remix)"
+ALBUM 254572 "Absolutely"
+DURATION_MS 345129
+PROVIDERIDS MusicBrainzAlbumArtist=87199477-b0df-4ead-84ee-9b54b4abfc3d,MusicBrainzArtist=87199477-b0df-4ead-84ee-9b54b4abfc3d,MusicBrainzAlbum=37ee2e47-f935-3339-b389-532a7deaf505,MusicBrainzReleaseGroup=57d535bc-5963-3a96-827e-b97de9fee60d,MusicBrainzTrack=1230ccde-6635-3854-bb57-191c9d3d4225
+ALBUMARTIST "ABC" mbid=87199477-b0df-4ead-84ee-9b54b4abfc3d
+ARTIST "ABC" mbid=87199477-b0df-4ead-84ee-9b54b4abfc3d
+COMPOSER "Martin Fry" mbid=bc6f40cf-05da-40c2-9c53-209e48b1f0b7
+COMPOSER "David Palmer" mbid=f06616a5-6f80-4210-a79f-2e1ac4ffbe45
+COMPOSER "Stephen Singleton" mbid=d2c42bbd-5d4b-4d7d-acee-9c117cc2675d
+COMPOSER "Mark White" mbid=cc98b5fe-cb30-4239-b89d-52b34a0546e1
+
+TRACK ccb05578886bae81ea1bc83f3e0387ec "The Look of Love, Part 1"
+ALBUM 275309 "Ashes to Ashes: Series 2"
+DURATION_MS 208509
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=87199477-b0df-4ead-84ee-9b54b4abfc3d,MusicBrainzAlbum=2a0e6a28-12a7-337d-be03-d196f112c1eb,MusicBrainzReleaseGroup=eb7aec28-986e-3aff-9020-d2e5b33b9f0e,MusicBrainzTrack=768f324a-9650-3e38-bff7-5c2bf4ee11f9
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "ABC" mbid=87199477-b0df-4ead-84ee-9b54b4abfc3d
+COMPOSER "Edmund Butt" mbid=75635cf8-f6a1-435f-aac0-2af2f48526a7
+COMPOSER "Martin Fry" mbid=bc6f40cf-05da-40c2-9c53-209e48b1f0b7
+COMPOSER "David Palmer" mbid=f06616a5-6f80-4210-a79f-2e1ac4ffbe45
+COMPOSER "Stephen Singleton" mbid=d2c42bbd-5d4b-4d7d-acee-9c117cc2675d
+COMPOSER "Mark White" mbid=cc98b5fe-cb30-4239-b89d-52b34a0546e1
+
+TRACK be38e505b850be4f2ecfb873ce767461 "The Look of Love, Part 1"
+ALBUM 270554 "Best Popsongs Ever: 35 Most Wanted Popclassics"
+DURATION_MS 210808
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=87199477-b0df-4ead-84ee-9b54b4abfc3d,MusicBrainzAlbum=88c834e6-9bab-4e07-a675-2103ebda990d,MusicBrainzReleaseGroup=83bf9938-5905-3f18-95b4-e13d3384f764,MusicBrainzTrack=35fb1559-aa0a-318a-8b1f-ee22bfef8e70
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "ABC" mbid=87199477-b0df-4ead-84ee-9b54b4abfc3d
+COMPOSER "Martin Fry" mbid=bc6f40cf-05da-40c2-9c53-209e48b1f0b7
+COMPOSER "David Palmer" mbid=f06616a5-6f80-4210-a79f-2e1ac4ffbe45
+COMPOSER "Stephen Singleton" mbid=d2c42bbd-5d4b-4d7d-acee-9c117cc2675d
+COMPOSER "Mark White" mbid=cc98b5fe-cb30-4239-b89d-52b34a0546e1
+
+
+
 ARTIST f8129b8df80244aea61dcbb0a8836fa3 "Elvis Costello"
 TRACK c7fd84d275f50d8cbd6f095af2e13d43 "Living in Paradise"
 ALBUM 272022 "This Year's Model"

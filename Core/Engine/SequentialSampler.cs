@@ -20,7 +20,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
     /// </summary>
     public class SequentialSampler<TSourceEntity> where TSourceEntity : ISourceEntity
     {
-        private readonly IEnumerable<IEvidenceCollector<TSourceEntity>> _staticCollectors;
         private readonly IEnumerable<IObservationEvidenceCollector<TSourceEntity>> _observationCollectors;
         private readonly IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> _roundBasedCollectors;
         private readonly IObservationUnitProvider<TSourceEntity>? _unitProvider;
@@ -34,7 +33,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
         private readonly StructuredLogger _logger;
 
         public SequentialSampler(
-            IEnumerable<IEvidenceCollector<TSourceEntity>> staticCollectors,
             IEnumerable<IObservationEvidenceCollector<TSourceEntity>> observationCollectors,
             IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedCollectors,
             IObservationUnitProvider<TSourceEntity>? unitProvider,
@@ -43,7 +41,6 @@ namespace MetadataHealthCheck.v2.Core.Engine
             IDecisionGate decisionGate,
             StructuredLogger logger)
         {
-            _staticCollectors = staticCollectors;
             _observationCollectors = observationCollectors;
             _roundBasedCollectors = roundBasedCollectors;
             _unitProvider = unitProvider;
@@ -72,49 +69,22 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
             Banner($"BEGIN RESOLUTION: {source.DisplayName}");
 
-            // Step 1: static, candidate-pair-level evidence -- once per candidate,
-            // regardless of what follows (§5.4). This also covers §5.2's album-match
-            // precursor once that collector exists: if it alone crosses a bound, no
-            // track-level sampling ever runs (§18's worked example).
-            Banner("STATIC EVIDENCE");
-            foreach (var candidate in candidates)
-            {
-                var candidateRecords = new List<EvidenceRecord>();
-                foreach (var collector in _staticCollectors)
-                {
-                    var record = collector.Collect(source, candidate, context);
-                    if (record == null) continue;
-                    evidenceByCandidate[candidate.Id].Add(record);
-                    repository.SaveEvidence(record);
-                    candidateRecords.Add(record);
-                }
-                if (candidateRecords.Count == 0) continue;
-
-                var contributing = candidateRecords.Where(r => r.Contributing).ToList();
-                var opportunistic = candidateRecords.Where(r => !r.Contributing).ToList();
-
-                foreach (var record in contributing)
-                {
-                    LogEvidence(candidate, nameCounts, record, config, prefix: "static ", indent: "");
-                }
-                if (opportunistic.Count > 0)
-                {
-                    _logger.Debug("Sampler", "[{0}] ---- opportunistic evidence below (not scored, informational only) ----", FormatCandidateLabel(candidate, nameCounts));
-                    foreach (var record in opportunistic)
-                    {
-                        LogEvidence(candidate, nameCounts, record, config, prefix: "static ", indent: "");
-                    }
-                    _logger.Debug("Sampler", "[{0}] ---- end opportunistic evidence ----", FormatCandidateLabel(candidate, nameCounts));
-                }
-            }
-            Banner("END STATIC EVIDENCE");
-
+            // Removed 2026-07-28 (settled directive): the STATIC EVIDENCE phase
+            // (§5.4/§5.2's album-match precursor) looped over _staticCollectors, but
+            // NameDistanceEvidenceCollector -- the only collector ever wired into it --
+            // was unwired the same day (pure Contributing=false noise, nothing read
+            // it). The early-return branch that used to follow it ("resolved from
+            // static evidence alone") is removed too, since with no static evidence
+            // source left it could never fire. `decision` itself is still initialized
+            // here (rather than only inside the loop below) because it's read by the
+            // final fallback `return decision;` if every bucket budget is exhausted
+            // without ever entering the loop body (e.g. an entity with zero
+            // observations) -- ScoreAndDecide against empty evidence yields the same
+            // needs_review result that used to fall through from the removed static
+            // phase, so this preserves that behavior exactly. Re-add the full static
+            // phase if a genuine static collector (e.g. the parked
+            // AlbumMatchEvidenceCollector) is ever wired back in.
             var decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
-            if (decision.Status != "needs_review")
-            {
-                _logger.Debug("Sampler", "Resolved from static evidence alone for {0}; no track-level sampling needed.", source.DisplayName);
-                return decision;
-            }
 
             // Step 2: per-observation sampling, bucket by bucket (highest signal
             // first), unit by unit within a bucket, stopping the instant any bound
