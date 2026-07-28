@@ -20,6 +20,12 @@ namespace MetadataHealthCheck.v2.BatchHarness
         public string ExpectedUrl => HasExpectedMbid ? $"https://musicbrainz.org/artist/{ExpectedMbid}" : "";
         public string ChosenUrl => !string.IsNullOrWhiteSpace(ChosenMbid) ? $"https://musicbrainz.org/artist/{ChosenMbid}" : "";
         public string Decision { get; set; } = "";           // MatchResult.Status: auto_accept | auto_reject | needs_review
+        // Added 2026-07-28: MatchResult.DecisionReason, e.g.
+        // "forced_needs_review_candidate_fold" when ResolutionEngine's fold-override
+        // (see ArtistStrategy's fold-pass doc comment) downgraded an otherwise
+        // auto_accept/auto_reject decision. Null/empty for a decision that was never
+        // overridden -- i.e. ThresholdDecisionGate's own status stands unchanged.
+        public string? DecisionReason { get; set; }
         public double Confidence { get; set; }
         public double Llr { get; set; }
         public double Margin { get; set; }
@@ -79,7 +85,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
                 .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var header = "ArtistName,SourceId,ExpectedMbid,ExpectedUrl,ChosenMbid,ChosenUrl,Decision,Correct,Confidence,Llr,Margin,ApiCalls,ElapsedMs,Error"
+            var header = "ArtistName,SourceId,ExpectedMbid,ExpectedUrl,ChosenMbid,ChosenUrl,Decision,DecisionReason,Correct,Confidence,Llr,Margin,ApiCalls,ElapsedMs,Error"
                 + (evidenceKeys.Count > 0 ? "," + string.Join(",", evidenceKeys.Select(CsvEscape)) : "");
             var lines = new List<string> { header };
 
@@ -94,6 +100,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
                     CsvEscape(r.ChosenMbid),
                     CsvEscape(r.ChosenUrl),
                     CsvEscape(r.Decision),
+                    CsvEscape(r.DecisionReason ?? ""),
                     r.HasExpectedMbid ? r.Correct.ToString() : "",
                     r.Confidence.ToString("F4", CultureInfo.InvariantCulture),
                     r.Llr.ToString("F4", CultureInfo.InvariantCulture),
@@ -154,6 +161,23 @@ namespace MetadataHealthCheck.v2.BatchHarness
 
                 var overallAccuracy = (double)withGroundTruth.Count(r => r.Correct) / withGroundTruth.Count;
                 Console.WriteLine($"  Overall accuracy (top candidate == expected, any decision): {overallAccuracy:P1}");
+
+                // Added 2026-07-28: how many rows carry a non-empty DecisionReason
+                // (currently only "forced_needs_review_candidate_fold", set by
+                // ResolutionEngine's fold-override -- see ArtistStrategy's fold-pass
+                // doc comment). Answers "how much of the needs_review total is an
+                // override, versus a genuine LLR/margin shortfall" without needing to
+                // open the CSV.
+                var withReason = scored.Where(r => !string.IsNullOrEmpty(r.DecisionReason)).ToList();
+                if (withReason.Count > 0)
+                {
+                    Console.WriteLine();
+                    Console.WriteLine("--- Decision overrides (DecisionReason) ---");
+                    foreach (var g in withReason.GroupBy(r => r.DecisionReason, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()))
+                    {
+                        Console.WriteLine($"  {g.Key,-40} total={g.Count()}");
+                    }
+                }
             }
 
             Console.WriteLine();

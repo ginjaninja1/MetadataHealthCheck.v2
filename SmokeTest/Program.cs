@@ -98,8 +98,23 @@ foreach (var artist in artists)
     // this smoke test measures.
     var repo = new InMemoryMatchRepository();
     var engine = new ResolutionEngine(plugin, repo, identityCache, scoringConfig, logger);
+
+    // Per-artist context: CandidateFoldOccurred/FoldNotes must start fresh for
+    // EVERY artist -- see ResolutionContext's own field comments. Reusing the
+    // outer `context` across this loop's iterations was a real bug: one
+    // artist's genuine fold permanently poisoned CandidateFoldOccurred=true for
+    // every artist processed afterward in this run, forcing needs_review on
+    // all of them regardless of their own evidence. RunId/CancellationToken/
+    // Progress are genuinely batch-level, so still carried over from the
+    // shared outer context.
+    var artistContext = new ResolutionContext
+    {
+        RunId = context.RunId,
+        CancellationToken = context.CancellationToken,
+        Progress = context.Progress,
+    };
     var callsBefore = mbClient.TotalApiCalls;
-    var result = engine.ResolveOne(artist, context);
+    var result = engine.ResolveOne(artist, artistContext);
     var callsForThisArtist = mbClient.TotalApiCalls - callsBefore;
     Pause();
 

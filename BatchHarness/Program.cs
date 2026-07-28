@@ -112,10 +112,22 @@ await Parallel.ForEachAsync(
         {
             var repo = new InMemoryMatchRepository();
             var engine = new ResolutionEngine(plugin, repo, identityCache, scoringConfig, logger);
-            var result = engine.ResolveOne(artist, context);
+
+            // Per-artist context: CandidateFoldOccurred/FoldNotes must start fresh for
+            // EVERY artist -- see ResolutionContext's own field comments. RunId/
+            // CancellationToken/Progress are genuinely batch-level, so carried over
+            // from the shared outer `context` rather than re-generated per artist.
+            var artistContext = new ResolutionContext
+            {
+                RunId = context.RunId,
+                CancellationToken = context.CancellationToken,
+                Progress = context.Progress,
+            };
+            var result = engine.ResolveOne(artist, artistContext);
 
             row.ChosenMbid = result.TargetId;
             row.Decision = result.Status;
+            row.DecisionReason = result.DecisionReason;
             row.Confidence = result.Confidence;
             row.Llr = result.Llr;
             row.Margin = result.Margin;
