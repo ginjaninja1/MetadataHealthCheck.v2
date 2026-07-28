@@ -126,7 +126,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
             var cgConfig = _config.CandidateGeneration;
             var normalizedSource = ArtistNameNormalizer.Normalize(source.DisplayName, cgConfig.NameNormalizationRules);
 
-            _logger?.Info("ArtistCandidateGen", "[{0}] Filtering {1} artist search result(s) by MB score (>= {2}) OR exact normalized name match...", source.DisplayName, artistResults.Count, cgConfig.ArtistCandidateMinScore);
+            _logger?.Info("ArtistCandidateGen", "[{0}] Filtering {1} artist search result(s) by MB score (>= {2}) OR exact normalized name/alias match...", source.DisplayName, artistResults.Count, cgConfig.ArtistCandidateMinScore);
 
             var admitted = new List<(MbArtistResult Result, MatchTier Tier)>();
             var seen = new HashSet<string>();
@@ -145,9 +145,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                 // name hit should never be dropped just for a middling MB relevance
                 // score. Reuses ClassifyMatchTier's own exact-match detection rather
                 // than a second, possibly-diverging distance check.
-                if (result.Score < cgConfig.ArtistCandidateMinScore && tier != MatchTier.Name)
+                //
+                // Extended 2026-07-28: the exemption now also covers exact normalized
+                // ALIAS matches (MatchTier.Alias), not just exact name matches. Live
+                // evidence ("Mos Def" -> Yasiin Bey, score=70 < threshold 80, admitted
+                // only via an alias hit) confirmed a correct candidate can be an exact
+                // alias match yet score below ArtistCandidateMinScore, and would
+                // otherwise be dropped.
+                if (result.Score < cgConfig.ArtistCandidateMinScore && tier != MatchTier.Name && tier != MatchTier.Alias)
                 {
-                    _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} tier={3} -- DROPPED: below ArtistCandidateMinScore ({4}) and not an exact name match.", result.Mbid, result.Name, result.Score, tier, cgConfig.ArtistCandidateMinScore);
+                    _logger?.Info("ArtistCandidateGen", "  [{0}] \"{1}\" score={2} tier={3} -- DROPPED: below ArtistCandidateMinScore ({4}) and not an exact name/alias match.", result.Mbid, result.Name, result.Score, tier, cgConfig.ArtistCandidateMinScore);
                     continue;
                 }
 

@@ -36,6 +36,19 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST 3da66a2deacf4f5196f5f8cd8279f0f6 "Mos Def"
+TRACK bb502f2d3af2d0e13adc28e2813b830c "Stylo"
+ALBUM 270161 "Triple J Hottest 100 of 2010"
+DURATION_MS 270497
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=e21857d5-3256-4547-afb3-4b6ded592596/48e78462-2f0b-4a1a-9fa4-0585e2991e80/f5c4c27e-5902-4fc0-adfb-7775da3d5363,MusicBrainzAlbum=16c6b708-be48-4554-a756-326e7083a4ae,MusicBrainzReleaseGroup=a3ad7439-281e-4808-b0c9-83cec2477b67,MusicBrainzTrack=c4eb37f9-a8d9-4323-9b44-ef4a31376c64
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+ARTIST "Bobby Womack" mbid=48e78462-2f0b-4a1a-9fa4-0585e2991e80
+ARTIST "Mos Def" mbid=f5c4c27e-5902-4fc0-adfb-7775da3d5363
+COMPOSER "Mos Def" mbid=f5c4c27e-5902-4fc0-adfb-7775da3d5363
+COMPOSER "Gorillaz" mbid=e21857d5-3256-4547-afb3-4b6ded592596
+
+
 ARTIST 2c6856c640964371bfe4bb8f102284ed "Michael Anthony"
 TRACK 742dc7312fbbc05f3d20624d8b47a481 "Ain't Talkin 'bout Love"
 ALBUM 270657 "The Best Heavy Metal Album in the World... Ever!"
