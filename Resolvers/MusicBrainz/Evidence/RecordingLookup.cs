@@ -86,13 +86,15 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         public MbRecordingResult? Recording { get; set; }
         public RecordingLookupRung RungReached { get; set; } = RecordingLookupRung.NotFound;
 
-        // Added 2026-07-13: whether this hit matched the candidate's primary MB name
-        // (false) or only a registered alias (true), per
-        // NameDistanceEvidenceCollector.EvaluateRecordingMatch. Drives
-        // EvidenceRecord.MatchedViaAlias -> ScoringConfig.NameMatchWeight/
-        // AliasMatchWeight at scoring time (§5.3/§6.3). Meaningless when Recording is
-        // null (defaults false). Only ever true when ConfirmedViaRelationship is
-        // false -- the two confirmation paths are mutually exclusive per recording.
+        // Added 2026-07-13: originally set from NameDistanceEvidenceCollector.
+        // EvaluateRecordingMatch to distinguish a match against the candidate's
+        // primary MB name vs. a registered alias. Removed 2026-07-28 (settled
+        // directive): confirmation is by MBID equality, which has no "primary name
+        // vs. alias" distinction to report, so this is now always false for
+        // performer-credit confirmations. Left in place (rather than deleted) since
+        // ScoringConfig.NameMatchWeight/AliasMatchWeight still reference it at
+        // scoring time (§5.3/§6.3) -- removing the field is a separate scoring-config
+        // decision, not a side effect of this bugfix.
         public bool MatchedViaAlias { get; set; }
 
         // Added 2026-07-18: true when this recording was confirmed via the
@@ -142,8 +144,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
     ///
     /// CONFIRMATION (widened 2026-07-18, settled directive): a recording returned at a
     /// rung is confirmed for a candidate if EITHER (a) the candidate is the recording's
-    /// performer (ArtistMbid==candidate, as before -- subject to the existing
-    /// NameDistanceEvidenceCollector trust check), OR (b) the candidate's MBID or one
+    /// performer -- ArtistMbid==candidate, OR (as of 2026-07-28) candidate found in
+    /// ReleaseAlbumArtistMbids (release-level "album artist" credit, mined across ALL
+    /// releases the recording appears on -- see MbRecordingResult doc comment). Both
+    /// are exact MBID matches; the name-similarity trust check that used to gate this
+    /// path was removed 2026-07-28 as redundant/harmful once confirmation is by MBID
+    /// equality (see EvidenceRecord.MatchedViaAlias doc comment). OR (b) the
+    /// candidate's MBID or one
     /// of its RelationshipMbids appears anywhere in the recording's own relationship
     /// data (GetRelationships) -- an exact-MBID match, not a fuzzy one, so this isn't
     /// looser than performer-matching, it's a second equally-strict path for
@@ -385,17 +392,33 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 {
                     foreach (var rec in survivors)
                     {
-                        if (rec.ArtistMbid != candidateMbid) continue;
-                        var candidateName = _client.GetArtistDisplayName(candidateMbid);
-                        var candidateAliases = _client.GetArtistAliases(candidateMbid);
-                        var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
-                        if (outcome == NameMatchOutcome.TooPoorToTrust) continue;
+                        // Match either the recording's own (track-level) artist credit,
+                        // or ANY release-level artist credit ("album artist") this
+                        // recording carries across all its releases -- see
+                        // MbRecordingResult.ReleaseAlbumArtistMbids doc comment. Fixes a
+                        // bug where a candidate correctly credited as album artist on a
+                        // non-representative release was never matched.
+                        bool matchedViaReleaseAlbumArtist = rec.ArtistMbid != candidateMbid
+                            && rec.ReleaseAlbumArtistMbids.Contains(candidateMbid);
+                        if (rec.ArtistMbid != candidateMbid && !matchedViaReleaseAlbumArtist) continue;
 
+                        // Removed 2026-07-28 (settled directive): a name-similarity check
+                        // used to run here against the matched credit text. MBID equality
+                        // above already IS the identity confirmation -- MBIDs are unique,
+                        // stable identities, so there was no remaining "wrong artist"
+                        // scenario left for a fuzzy text check to catch. In practice it
+                        // only ever had one effect: silently rejecting a correct MBID
+                        // match when the compared credit text happened to read
+                        // differently (e.g. a candidate confirmed via release-level
+                        // album-artist credit, checked against the unrelated
+                        // recording-level credit text). MatchedViaAlias is therefore
+                        // always false here now -- it described a property of the
+                        // removed text check, not of ID-based confirmation.
                         cheapConfirmed[candidateMbid] = new RecordingLookupResult
                         {
                             Recording = rec,
                             RungReached = rung,
-                            MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
+                            MatchedViaAlias = false,
                             ConfirmedViaRelationship = false,
                         };
                         break;
@@ -467,17 +490,25 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 {
                     foreach (var rec in survivors)
                     {
-                        if (rec.ArtistMbid != candidateMbid) continue;
-                        var candidateName = _client.GetArtistDisplayName(candidateMbid);
-                        var candidateAliases = _client.GetArtistAliases(candidateMbid);
-                        var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
-                        if (outcome == NameMatchOutcome.TooPoorToTrust) continue;
+                        // Match either the recording's own (track-level) artist credit,
+                        // or ANY release-level artist credit ("album artist") this
+                        // recording carries across all its releases -- see
+                        // MbRecordingResult.ReleaseAlbumArtistMbids doc comment. Fixes a
+                        // bug where a candidate correctly credited as album artist on a
+                        // non-representative release was never matched.
+                        bool matchedViaReleaseAlbumArtist = rec.ArtistMbid != candidateMbid
+                            && rec.ReleaseAlbumArtistMbids.Contains(candidateMbid);
+                        if (rec.ArtistMbid != candidateMbid && !matchedViaReleaseAlbumArtist) continue;
 
+                        // Removed 2026-07-28 (settled directive): see companion comment
+                        // at the rung-based confirmation block above -- the name-check
+                        // that used to run here is gone; MBID equality above is the
+                        // confirmation.
                         cheapConfirmed[candidateMbid] = new RecordingLookupResult
                         {
                             Recording = rec,
                             RungReached = RecordingLookupRung.TrackDuration,
-                            MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
+                            MatchedViaAlias = false,
                             ConfirmedViaRelationship = false,
                         };
                         break;
@@ -621,19 +652,22 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
             foreach (var rec in survivors)
             {
-                if (rec.ArtistMbid == candidateMbid)
+                // Match either the recording's own (track-level) artist credit, or ANY
+                // release-level artist credit ("album artist") this recording carries
+                // across all its releases -- see MbRecordingResult.ReleaseAlbumArtistMbids
+                // doc comment. Fixes a bug where a candidate correctly credited as album
+                // artist on a non-representative release was never matched.
+                //
+                // Removed 2026-07-28 (settled directive): a name-check used to run here
+                // too -- see companion comment on the rung-based confirmation block
+                // earlier in this file. MBID equality below is the confirmation.
+                if (rec.ArtistMbid == candidateMbid || rec.ReleaseAlbumArtistMbids.Contains(candidateMbid))
                 {
-                    var candidateName = _client.GetArtistDisplayName(candidateMbid);
-                    var candidateAliases = _client.GetArtistAliases(candidateMbid);
-                    var outcome = NameDistanceEvidenceCollector.EvaluateRecordingMatch(candidateName, candidateAliases, rec.ArtistCreditText);
-                    if (outcome == NameMatchOutcome.TooPoorToTrust)
-                        continue;
-
                     return new RecordingLookupResult
                     {
                         Recording = rec,
                         RungReached = RecordingLookupRung.TrackDuration,
-                        MatchedViaAlias = outcome == NameMatchOutcome.MatchedViaAlias,
+                        MatchedViaAlias = false,
                         ConfirmedViaRelationship = false,
                     };
                 }

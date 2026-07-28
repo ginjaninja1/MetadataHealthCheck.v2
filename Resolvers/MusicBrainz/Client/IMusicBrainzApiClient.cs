@@ -88,6 +88,24 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // the "Compilation" secondary type for other MB-cataloguing reasons.
         public string? ReleaseAlbumArtistMbid { get; set; }
         public string? ReleaseAlbumArtistCreditText { get; set; }
+
+        // Added 2026-07-28 (bugfix): release-level artist-credit MBIDs across EVERY
+        // release this recording appears on -- not just the single representative
+        // release used above for richness ranking. A recording can legitimately carry
+        // different release-level artist credits on different releases (e.g. one
+        // candidate credited on a compilation, a different candidate credited on the
+        // original studio album of the same recording). Confirmation must be able to
+        // match against ANY of them, not just whichever release happened to be picked
+        // as "representative" for richness purposes. Deliberately a separate field
+        // from ReleaseAlbumArtistMbid above rather than reshaping it, since that field
+        // has its own distinct, already-settled job (Various-Artists richness
+        // detection on ONE representative release) that a list shape would break.
+        public List<string> ReleaseAlbumArtistMbids { get; set; } = new();
+
+        // Added 2026-07-28: names parallel to ReleaseAlbumArtistMbids above (same
+        // index order), for debug-log readability only. Confirmation matching in
+        // RecordingLookup uses ReleaseAlbumArtistMbids exclusively -- never these names.
+        public List<string> ReleaseAlbumArtistNames { get; set; } = new();
     }
 
     // Relationship level per §7.2 C5: work-level (writer/composer/lyricist/librettist,

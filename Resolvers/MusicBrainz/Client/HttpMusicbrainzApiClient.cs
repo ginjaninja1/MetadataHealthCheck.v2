@@ -205,6 +205,35 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             return (mbid, string.Join("", names));
         }
 
+        // Added 2026-07-28 (bugfix): unlike ParseReleaseAlbumArtist above (single
+        // representative release, richness-ranking use only), this scans every
+        // release's artist-credit and returns the full distinct set of MBIDs found --
+        // used for candidate confirmation, where a match on ANY release counts,
+        // regardless of which release happened to be picked as "representative".
+        // Names are collected in the same pass purely for debug-log readability
+        // (see the "Album Artist:" line in SearchRecording/SearchRecordingByTitleAndDuration) --
+        // matching itself is done on Mbids only, never on Names.
+        private static (List<string> Mbids, List<string> Names) ParseAllReleaseAlbumArtistMbids(List<ReleaseDto>? releases)
+        {
+            var mbids = new List<string>();
+            var names = new List<string>();
+            if (releases == null) return (mbids, names);
+
+            foreach (var release in releases)
+            {
+                if (release.ArtistCredit == null) continue;
+                foreach (var c in release.ArtistCredit)
+                {
+                    if (c.Artist?.Id != null && !mbids.Contains(c.Artist.Id))
+                    {
+                        mbids.Add(c.Artist.Id);
+                        names.Add(c.Name ?? c.Artist.Name ?? "");
+                    }
+                }
+            }
+            return (mbids, names);
+        }
+
         public IReadOnlyList<MbRecordingResult> SearchRecording(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames = null)
         {
             var (url, callDesc) = BuildSearchRecordingQuery(trackTitle, albumTitle, artistNames);
@@ -247,6 +276,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                     // title occurs within that one release's own tracklist).
                     var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
                     var (releaseAlbumArtistMbid, releaseAlbumArtistCreditText) = ParseReleaseAlbumArtist(representativeRelease);
+                    var (allReleaseAlbumArtistMbids, allReleaseAlbumArtistNames) = ParseAllReleaseAlbumArtistMbids(r.Releases);
 
                     results.Add(new MbRecordingResult
                     {
@@ -265,6 +295,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         ReleaseCount = r.Releases?.Count ?? 0,
                         ReleaseAlbumArtistMbid = releaseAlbumArtistMbid,
                         ReleaseAlbumArtistCreditText = releaseAlbumArtistCreditText,
+                        ReleaseAlbumArtistMbids = allReleaseAlbumArtistMbids,
+                        ReleaseAlbumArtistNames = allReleaseAlbumArtistNames,
                     });
                 }
             }
@@ -278,6 +310,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                 _logger.Debug("MbApi", "         Track:  \"{0}\" (matches queried title: {1})", r.TrackTitle, r.TrackTitleMatches);
                 _logger.Debug("MbApi", "         Artist: {0}", r.ArtistCreditText);
                 _logger.Debug("MbApi", "         Album:  \"{0}\" (matches queried album: {1})", r.ReleaseTitle, r.ReleaseTitleMatches);
+                _logger.Debug("MbApi", "         Album Artist: {0}", r.ReleaseAlbumArtistNames.Count > 0 ? string.Join(", ", r.ReleaseAlbumArtistNames) : "(none found)");
                 _logger.Debug("MbApi", "         Length: {0}  Status: {1}  Type: {2}  Releases: {3}  Score: {4}",
                     r.LengthMs.HasValue ? $"{r.LengthMs}ms" : "(none)", r.ReleaseStatus ?? "(none)", r.ReleaseGroupPrimaryType ?? "(none)", r.ReleaseCount, r.Score);
                 // NOTE: no AlbumArtist or Relationship fields here -- a raw recording
@@ -360,6 +393,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
                     var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
                     var (releaseAlbumArtistMbid, releaseAlbumArtistCreditText) = ParseReleaseAlbumArtist(representativeRelease);
+                    var (allReleaseAlbumArtistMbids, allReleaseAlbumArtistNames) = ParseAllReleaseAlbumArtistMbids(r.Releases);
 
                     results.Add(new MbRecordingResult
                     {
@@ -378,6 +412,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         ReleaseCount = r.Releases?.Count ?? 0,
                         ReleaseAlbumArtistMbid = releaseAlbumArtistMbid,
                         ReleaseAlbumArtistCreditText = releaseAlbumArtistCreditText,
+                        ReleaseAlbumArtistMbids = allReleaseAlbumArtistMbids,
+                        ReleaseAlbumArtistNames = allReleaseAlbumArtistNames,
                     });
                 }
             }

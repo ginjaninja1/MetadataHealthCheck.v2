@@ -36,6 +36,55 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST f8129b8df80244aea61dcbb0a8836fa3 "Elvis Costello"
+TRACK c7fd84d275f50d8cbd6f095af2e13d43 "Living in Paradise"
+ALBUM 272022 "This Year's Model"
+DURATION_MS 222045
+PROVIDERIDS MusicBrainzAlbumArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzAlbum=faea9b02-8f27-3578-81e0-344c2dad1f1e,MusicBrainzReleaseGroup=5e8117f4-a87f-3732-be5f-313c7e5b308d,MusicBrainzTrack=f92d6554-8e2a-3187-822a-2f004992e7c3
+ALBUMARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+ARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+COMPOSER "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+
+TRACK e4281da18d3f8b01325460076cedf96e "Don’t Talk (Put Your Head on My Shoulder)"
+ALBUM 380271 "For the Stars"
+DURATION_MS 192466
+PROVIDERIDS MusicBrainzAlbumArtist=da7c775b-ea4e-4e5f-a9a4-878574ca2c75/8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzArtist=da7c775b-ea4e-4e5f-a9a4-878574ca2c75/8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzAlbum=6f25d558-075a-4e50-9a1d-af4dfaa6e5f9,MusicBrainzReleaseGroup=1151eea8-9124-3e71-a694-a6802087f886,MusicBrainzTrack=112bacb7-dcac-4cf6-a260-5246110a715e
+ALBUMARTIST "Anne Sofie von Otter" mbid=da7c775b-ea4e-4e5f-a9a4-878574ca2c75
+ALBUMARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+ARTIST "Anne Sofie von Otter" mbid=da7c775b-ea4e-4e5f-a9a4-878574ca2c75
+ARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+
+TRACK 9d2d5de131c72c41adfcb7888b7d1ddb "(What's So Funny 'Bout) Peace, Love & Understanding"
+ALBUM 272023 "The Very Best of Elvis Costello"
+DURATION_MS 211670
+PROVIDERIDS MusicBrainzAlbumArtist=8a338e06-d182-46f2-bd16-30a09bc840ba,MusicBrainzArtist=0ffb6573-a98e-412e-aa01-0a580e9d8b06,MusicBrainzAlbum=0c8d19d9-9a89-4ca1-b06f-26a592123a50,MusicBrainzReleaseGroup=135e07a2-a283-361e-9ff1-977fcf4d1460,MusicBrainzTrack=f36006f0-ce93-34b6-96cc-ce7e31c97517
+ALBUMARTIST "Elvis Costello" mbid=8a338e06-d182-46f2-bd16-30a09bc840ba
+ARTIST "Elvis Costello & The Attractions" mbid=0ffb6573-a98e-412e-aa01-0a580e9d8b06
+COMPOSER "Nick Lowe" mbid=a3d5a6bf-c86d-44d3-969b-f345620009c6
+
+ARTIST b4193f0e33f14747bdf75280b4930dca "Dan Peters"
+TRACK 16761d2cfb43aed55e184a4aa398e50a "Overblown"
+ALBUM 276364 "Singles: Original Motion Picture Soundtrack"
+DURATION_MS 182883
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=e675295a-1efe-4247-aa3b-53b78d0cdffc,MusicBrainzAlbum=59752819-1e3f-4ff5-bad2-7b8fc92b4b18,MusicBrainzReleaseGroup=9c80717d-43e0-3219-b8c8-019f5d83cf60,MusicBrainzTrack=ddb3cccd-37c0-3972-8e5e-7307bdd43ccf
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "Mudhoney" mbid=e675295a-1efe-4247-aa3b-53b78d0cdffc
+COMPOSER "Matt Lukin" mbid=299e8c0a-63ad-4d49-b492-d3740364da84
+COMPOSER "Mark McLaughlin" mbid=3f3a60cb-6d76-4ada-b72f-2e3743d769ae
+COMPOSER "Dan Peters" mbid=00b42e3f-042a-44d8-899d-fa6ce354ab53
+COMPOSER "Steve Turner" mbid=c4fc3b45-2c80-4071-9aa2-393e49da4292
+
+TRACK 2a88dd187394184a19c7d4c40f7ec671 "Who You Drivin' Now?"
+ALBUM 255278 "Intergalactic Sonic 7s"
+DURATION_MS 122200
+PROVIDERIDS MusicBrainzAlbumArtist=99164692-c02d-407c-81c9-25d338dd21f4,MusicBrainzArtist=99164692-c02d-407c-81c9-25d338dd21f4,MusicBrainzAlbum=e24af62d-ab91-358d-9552-0624e8a95ab4,MusicBrainzReleaseGroup=33f91f8c-0720-329f-a459-94ae4dd26de1,MusicBrainzTrack=69b3f244-633d-3a1b-9cff-43ccaa0e407e
+ALBUMARTIST "Ash" mbid=99164692-c02d-407c-81c9-25d338dd21f4
+ARTIST "Ash" mbid=99164692-c02d-407c-81c9-25d338dd21f4
+COMPOSER "Mark Arm" mbid=3f99d2df-8859-4249-8a70-84fe04c5a096
+COMPOSER "Matt Lukin" mbid=299e8c0a-63ad-4d49-b492-d3740364da84
+COMPOSER "Dan Peters" mbid=00b42e3f-042a-44d8-899d-fa6ce354ab53
+COMPOSER "Steve Turner" mbid=c4fc3b45-2c80-4071-9aa2-393e49da4292
+
 ARTIST b0cd083f726e45d7a9865f26f5ebb769 "Bob Horn"
 TRACK b6de52d994c00602da343139045504fc "Bandstand Boogie"
 ALBUM 255641 "Ultimate Manilow"
