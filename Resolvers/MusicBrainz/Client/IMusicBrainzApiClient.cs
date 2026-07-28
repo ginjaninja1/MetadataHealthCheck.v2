@@ -28,6 +28,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
     public class MbRecordingResult
     {
         public string RecordingId { get; set; } = "";
+
+        // NOTE: first-credited artist's MBID only. Kept only for the TrackDuration
+        // frequency tally (RecordingLookup.GetOrBuildDurationRungData), which groups
+        // by first-artist-only as a KNOWN, already-flagged simplification (see that
+        // method's doc comment) -- not something this fix silently extends to cover.
+        // Do NOT use this field for candidate-match confirmation; use ArtistMbids
+        // (below) instead, since a multi-artist recording credit's 2nd/3rd artist is
+        // otherwise invisible to matching entirely.
         public string ArtistMbid { get; set; } = "";
         public string TrackTitle { get; set; } = "";
         public string ReleaseTitle { get; set; } = "";
@@ -40,6 +48,19 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // name or only a registered alias (MatchedViaAlias, §5.4/§6.3), and whether the
         // match is trustworthy at all (NameDistanceEvidenceCollector.EvaluateRecordingMatch).
         public string ArtistCreditText { get; set; } = "";
+
+        // Added 2026-07-28 (bugfix): recording/track-level artist-credit MBIDs for
+        // EVERY artist on this recording's credit, not just the first (ArtistMbid
+        // above). A recording's artist-credit is an ordered list ("Gorillaz feat.
+        // Mos Def & Bobby Womack" is 3 credited artists), and a candidate confirmed
+        // via any position in that credit is a real match -- ArtistMbid alone was
+        // silently dropping every candidate except whichever artist happened to be
+        // listed first. Use THIS field for match confirmation.
+        public List<string> ArtistMbids { get; set; } = new();
+
+        // Names parallel to ArtistMbids above (same index order), for debug-log
+        // readability only -- confirmation matching uses ArtistMbids exclusively.
+        public List<string> ArtistCreditNames { get; set; } = new();
 
         // Added 2026-07-18, per settled directive on recording-lookup disambiguation:
         // a real 772-recording same-title search sample showed MusicBrainz's own

@@ -183,12 +183,54 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             return url;
         }
 
+        // Added 2026-07-28 (bugfix): extracts the recording/track-level artist
+        // credit, shared by SearchRecording and SearchRecordingByTitleAndDuration
+        // (previously duplicated inline in both, with two bugs: (1) creditText was
+        // built with string.Join("", names) -- no separator, so "Gorillaz", "Mos
+        // Def", "Bobby Womack" rendered as "GorillazMos DefBobby Womack"; (2) only
+        // the first artist's MBID was ever captured, so a candidate credited 2nd/3rd
+        // on a multi-artist recording was invisible to match confirmation. Fixed by
+        // reading MusicBrainz's own "joinphrase" per credit for display, and
+        // collecting every credited artist's MBID/name into ArtistMbids/
+        // ArtistCreditNames. ArtistMbid (first-only) is still returned/kept
+        // separately for the TrackDuration frequency tally, which groups by
+        // first-artist-only as its own already-flagged simplification -- NOT
+        // something this fix silently extends to cover.
+        private static (string ArtistMbid, string CreditText, List<string> ArtistMbids, List<string> ArtistCreditNames) ParseArtistCredit(List<ArtistCreditDto>? artistCredit)
+        {
+            var artistMbid = "";
+            var artistMbids = new List<string>();
+            var artistCreditNames = new List<string>();
+            var sb = new StringBuilder();
+
+            if (artistCredit != null)
+            {
+                foreach (var c in artistCredit)
+                {
+                    var name = c.Name ?? "";
+                    sb.Append(name);
+                    sb.Append(c.JoinPhrase ?? "");
+
+                    if (c.Artist?.Id != null)
+                    {
+                        if (artistMbid == "") artistMbid = c.Artist.Id;
+                        artistMbids.Add(c.Artist.Id);
+                        artistCreditNames.Add(name);
+                    }
+                }
+            }
+
+            return (artistMbid, sb.ToString(), artistMbids, artistCreditNames);
+        }
+
         // Added 2026-07-28: extracts the release-LEVEL artist credit (MusicBrainz's
         // actual "album artist") from a representative release, shared by both
         // SearchRecording and SearchRecordingByTitleAndDuration. Mirrors the
         // recording-level artist-credit parsing above, but on ReleaseDto.ArtistCredit
         // instead of RecordingDto.ArtistCredit. Same first-credited-artist limitation
-        // as the recording-level parse.
+        // as the recording-level parse (release-level "album artist" genuinely is
+        // typically single-valued in practice, unlike track-level credits, so this
+        // limitation was not extended into a list here -- flag if that proves wrong).
         private static (string? Mbid, string? CreditText) ParseReleaseAlbumArtist(ReleaseDto? release)
         {
             if (release?.ArtistCredit == null || release.ArtistCredit.Count == 0)
@@ -250,19 +292,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                         && r.Releases != null
                         && r.Releases.Any(rel => (rel.Title ?? "").Equals(albumTitle, StringComparison.OrdinalIgnoreCase));
 
-                    var artistMbid = "";
-                    var creditText = "";
-                    if (r.ArtistCredit != null)
-                    {
-                        var names = new List<string>();
-                        foreach (var c in r.ArtistCredit)
-                        {
-                            names.Add(c.Name ?? "");
-                            if (artistMbid == "" && c.Artist?.Id != null)
-                                artistMbid = c.Artist.Id;
-                        }
-                        creditText = string.Join("", names);
-                    }
+                    var (artistMbid, creditText, artistMbids, artistCreditNames) = ParseArtistCredit(r.ArtistCredit);
 
                     // Added 2026-07-18: pick ONE representative release to source the
                     // richness fields from (a recording can appear on many releases with
@@ -282,6 +312,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                     {
                         RecordingId = r.Id ?? "",
                         ArtistMbid = artistMbid,
+                        ArtistMbids = artistMbids,
+                        ArtistCreditNames = artistCreditNames,
                         TrackTitle = recTitle,
                         ReleaseTitle = albumTitle ?? "",
                         TrackTitleMatches = recTitle.Equals(trackTitle, StringComparison.OrdinalIgnoreCase),
@@ -377,19 +409,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             {
                 foreach (var r in parsed.Recordings)
                 {
-                    var artistMbid = "";
-                    var creditText = "";
-                    if (r.ArtistCredit != null)
-                    {
-                        var names = new List<string>();
-                        foreach (var c in r.ArtistCredit)
-                        {
-                            names.Add(c.Name ?? "");
-                            if (artistMbid == "" && c.Artist?.Id != null)
-                                artistMbid = c.Artist.Id;
-                        }
-                        creditText = string.Join("", names);
-                    }
+                    var (artistMbid, creditText, artistMbids, artistCreditNames) = ParseArtistCredit(r.ArtistCredit);
 
                     var representativeRelease = r.Releases?.FirstOrDefault(rel => rel.Status == "Official") ?? r.Releases?.FirstOrDefault();
                     var (releaseAlbumArtistMbid, releaseAlbumArtistCreditText) = ParseReleaseAlbumArtist(representativeRelease);
@@ -399,6 +419,8 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
                     {
                         RecordingId = r.Id ?? "",
                         ArtistMbid = artistMbid,
+                        ArtistMbids = artistMbids,
+                        ArtistCreditNames = artistCreditNames,
                         TrackTitle = r.Title ?? "",
                         ReleaseTitle = "",
                         TrackTitleMatches = (r.Title ?? "").Equals(trackTitle, StringComparison.OrdinalIgnoreCase),
@@ -702,6 +724,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         {
             [DataMember(Name = "name")] public string? Name { get; set; }
             [DataMember(Name = "artist")] public ArtistRefDto? Artist { get; set; }
+
+            // Added 2026-07-28 (bugfix): MusicBrainz's own separator to place AFTER
+            // this credit's name when rendering the full credit string (e.g. "",
+            // " & ", " feat. "). Was previously never read, so multi-artist credits
+            // were logged with names jammed together (e.g. "GorillazMos DefBobby
+            // Womack").
+            [DataMember(Name = "joinphrase")] public string? JoinPhrase { get; set; }
         }
 
         [DataContract]

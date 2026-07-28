@@ -34,14 +34,21 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
             foreach (var track in source.Tracks)
             {
                 var recordings = _client.SearchRecording(track.TrackName, track.AlbumName, null); // artistName not wired in here yet — follow-up work
-                foreach (var rec in recordings.Where(r => r.ArtistMbid == existing.TargetId))
+
+                // Bugfix 2026-07-28: was checking r.ArtistMbid (first-credited artist
+                // ONLY), which missed the anchor when it was credited 2nd/3rd on a
+                // multi-artist recording. Now checks ArtistMbids (every credited
+                // artist). TargetId is set to the already-known anchor id directly,
+                // not rec.ArtistMbid -- that field is first-credited-only and may not
+                // even be the anchor artist for a multi-artist credit.
+                foreach (var rec in recordings.Where(r => r.ArtistMbids.Contains(existing.TargetId)))
                 {
                     yield return new Candidate
                     {
                         SourceEntityId = source.SourceId,
                         TargetSystem = "MusicBrainz",
                         TargetEntityType = "Artist",
-                        TargetId = rec.ArtistMbid,
+                        TargetId = existing.TargetId,
                         GenerationStrategy = StrategyName,
                         GenerationQuery = $"recording:\"{track.TrackName}\" AND arid:{existing.TargetId}",
                         CreatedAt = DateTime.UtcNow,

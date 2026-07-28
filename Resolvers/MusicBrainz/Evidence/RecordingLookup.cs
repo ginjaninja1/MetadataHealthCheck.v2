@@ -398,9 +398,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                         // MbRecordingResult.ReleaseAlbumArtistMbids doc comment. Fixes a
                         // bug where a candidate correctly credited as album artist on a
                         // non-representative release was never matched.
-                        bool matchedViaReleaseAlbumArtist = rec.ArtistMbid != candidateMbid
+                        // Bugfix 2026-07-28: was checking rec.ArtistMbid (first-credited
+                        // artist ONLY), which silently dropped any candidate credited
+                        // 2nd/3rd/etc on a multi-artist recording (e.g. "Gorillaz feat.
+                        // Mos Def & Bobby Womack" -- Mos Def and Bobby Womack were
+                        // invisible to confirmation). Now checks ArtistMbids, which
+                        // holds every credited artist's MBID.
+                        bool matchedViaTrackArtist = rec.ArtistMbids.Contains(candidateMbid);
+                        bool matchedViaReleaseAlbumArtist = !matchedViaTrackArtist
                             && rec.ReleaseAlbumArtistMbids.Contains(candidateMbid);
-                        if (rec.ArtistMbid != candidateMbid && !matchedViaReleaseAlbumArtist) continue;
+                        if (!matchedViaTrackArtist && !matchedViaReleaseAlbumArtist) continue;
 
                         // Removed 2026-07-28 (settled directive): a name-similarity check
                         // used to run here against the matched credit text. MBID equality
@@ -490,15 +497,16 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 {
                     foreach (var rec in survivors)
                     {
-                        // Match either the recording's own (track-level) artist credit,
-                        // or ANY release-level artist credit ("album artist") this
-                        // recording carries across all its releases -- see
-                        // MbRecordingResult.ReleaseAlbumArtistMbids doc comment. Fixes a
-                        // bug where a candidate correctly credited as album artist on a
-                        // non-representative release was never matched.
-                        bool matchedViaReleaseAlbumArtist = rec.ArtistMbid != candidateMbid
+                        // Match either the recording's own (track-level) artist credit --
+                        // ANY credited artist, per ArtistMbids, not just the first-listed
+                        // one (bugfix 2026-07-28, see companion comment at the rung-based
+                        // confirmation block above) -- or ANY release-level artist credit
+                        // ("album artist") this recording carries across all its releases,
+                        // see MbRecordingResult.ReleaseAlbumArtistMbids doc comment.
+                        bool matchedViaTrackArtist = rec.ArtistMbids.Contains(candidateMbid);
+                        bool matchedViaReleaseAlbumArtist = !matchedViaTrackArtist
                             && rec.ReleaseAlbumArtistMbids.Contains(candidateMbid);
-                        if (rec.ArtistMbid != candidateMbid && !matchedViaReleaseAlbumArtist) continue;
+                        if (!matchedViaTrackArtist && !matchedViaReleaseAlbumArtist) continue;
 
                         // Removed 2026-07-28 (settled directive): see companion comment
                         // at the rung-based confirmation block above -- the name-check
@@ -652,16 +660,17 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
 
             foreach (var rec in survivors)
             {
-                // Match either the recording's own (track-level) artist credit, or ANY
-                // release-level artist credit ("album artist") this recording carries
-                // across all its releases -- see MbRecordingResult.ReleaseAlbumArtistMbids
-                // doc comment. Fixes a bug where a candidate correctly credited as album
-                // artist on a non-representative release was never matched.
+                // Match either the recording's own (track-level) artist credit -- ANY
+                // credited artist, per ArtistMbids, not just the first-listed one
+                // (bugfix 2026-07-28, see companion comment on the rung-based
+                // confirmation block earlier in this file) -- or ANY release-level
+                // artist credit ("album artist") this recording carries across all its
+                // releases, see MbRecordingResult.ReleaseAlbumArtistMbids doc comment.
                 //
                 // Removed 2026-07-28 (settled directive): a name-check used to run here
                 // too -- see companion comment on the rung-based confirmation block
                 // earlier in this file. MBID equality below is the confirmation.
-                if (rec.ArtistMbid == candidateMbid || rec.ReleaseAlbumArtistMbids.Contains(candidateMbid))
+                if (rec.ArtistMbids.Contains(candidateMbid) || rec.ReleaseAlbumArtistMbids.Contains(candidateMbid))
                 {
                     return new RecordingLookupResult
                     {
