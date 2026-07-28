@@ -36,6 +36,82 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST 24607b97447d4c46be5119edf4058784 "Yann Stephane Mickael Macé"
+TRACK e52c196794304f51c648f6f28c8b496f "Welcome to the Alesha Show"
+ALBUM 254746 "The Alesha Show"
+DURATION_MS 24894
+PROVIDERIDS MusicBrainzAlbumArtist=b54a3b47-8f52-46fd-85f2-49165ea437b8,MusicBrainzArtist=b54a3b47-8f52-46fd-85f2-49165ea437b8,MusicBrainzAlbum=fb2653a0-09ae-4fed-9684-545ef2941cc1,MusicBrainzReleaseGroup=0989d37b-81f7-31e2-8348-de11bf8904dd,MusicBrainzTrack=52d7dfc0-27e3-3d78-9f1a-52fbee09a2bd
+ALBUMARTIST "Alesha Dixon" mbid=b54a3b47-8f52-46fd-85f2-49165ea437b8
+ARTIST "Alesha Dixon" mbid=b54a3b47-8f52-46fd-85f2-49165ea437b8
+COMPOSER "Marvin Ambrosius" mbid=bcd1a477-e20c-4d1b-81d4-04b49d38a27d
+COMPOSER "Alesha Dixon" mbid=b54a3b47-8f52-46fd-85f2-49165ea437b8
+COMPOSER "Yann Stephane Mickael Macé" mbid=f32f7e59-f746-4bce-a75d-8d6a375fce8c
+
+
+ARTIST 4e235557676b4cd2972f3dc147e58fdb "Anne Dudley"
+TRACK ac35b48436500e810d557f0e7cde206f "Firestarter"
+ALBUM 277568 "The Rest, The Unreleased! The Last!"
+DURATION_MS 224705
+PROVIDERIDS MusicBrainzAlbumArtist=4a4ee089-93b1-4470-af9a-6ff575d32704,MusicBrainzArtist=4a4ee089-93b1-4470-af9a-6ff575d32704,MusicBrainzAlbum=e9370b4e-a80b-4e57-9b04-8bff05ad0cc7,MusicBrainzReleaseGroup=cbbdd5ab-a965-37c2-83d9-ee9f95c8b57b,MusicBrainzTrack=fce0be12-6dfb-31c0-b660-8811209f3670
+ALBUMARTIST "The Prodigy" mbid=4a4ee089-93b1-4470-af9a-6ff575d32704
+ARTIST "The Prodigy" mbid=4a4ee089-93b1-4470-af9a-6ff575d32704
+COMPOSER "kim Deal" mbid=760e4df4-e851-46c8-b34d-afa2e9706831
+COMPOSER "Anne Dudley" mbid=0b0bd0c0-3723-4715-87d7-9d57f0eb240f
+COMPOSER "Keith Flint" mbid=3efc71ea-3594-4510-b2d5-34c14c8687d4
+COMPOSER "Trevor Horn" mbid=b81c06a5-341f-4d04-a72e-7738030f792b
+COMPOSER "Liam Howlett" mbid=c1a18927-020f-4241-a08c-53d2630473b8
+COMPOSER "J.J. Jeczalik" mbid=46a16e88-4537-4b29-a06b-4a5dfe90a6cd
+COMPOSER "Gary Langan" mbid=9f6c4f5a-278a-4c46-aaed-bf5410f013c5
+COMPOSER "Paul Morley" mbid=a8449e6e-834b-4e2a-8497-0182a6e2aade
+
+TRACK f1f7bcdf8cb8b9924bc103228ebde03d "Firestarter (Alvin Risk remix)"
+ALBUM 277560 "The Fat of the Land (Expanded Edition)"
+DURATION_MS 198333
+PROVIDERIDS MusicBrainzAlbumArtist=4a4ee089-93b1-4470-af9a-6ff575d32704,MusicBrainzArtist=4a4ee089-93b1-4470-af9a-6ff575d32704,MusicBrainzAlbum=09344fa7-d4de-4ec7-8595-10aef08f72d5,MusicBrainzReleaseGroup=ac9138ce-6331-3f8d-86d7-69f13e4ab4f4,MusicBrainzTrack=2bb73a2c-f721-3f53-ae14-b139504e3712
+ALBUMARTIST "The Prodigy" mbid=4a4ee089-93b1-4470-af9a-6ff575d32704
+ARTIST "The Prodigy" mbid=4a4ee089-93b1-4470-af9a-6ff575d32704
+COMPOSER "kim Deal" mbid=760e4df4-e851-46c8-b34d-afa2e9706831
+COMPOSER "Anne Dudley" mbid=0b0bd0c0-3723-4715-87d7-9d57f0eb240f
+COMPOSER "Keith Flint" mbid=3efc71ea-3594-4510-b2d5-34c14c8687d4
+COMPOSER "Trevor Horn" mbid=b81c06a5-341f-4d04-a72e-7738030f792b
+COMPOSER "Liam Howlett" mbid=c1a18927-020f-4241-a08c-53d2630473b8
+COMPOSER "J.J. Jeczalik" mbid=46a16e88-4537-4b29-a06b-4a5dfe90a6cd
+COMPOSER "Gary Langan" mbid=9f6c4f5a-278a-4c46-aaed-bf5410f013c5
+COMPOSER "Paul Morley" mbid=a8449e6e-834b-4e2a-8497-0182a6e2aade
+
+TRACK f9a106c8a3744b230af86fad93726ede "Tears Are Not Enough"
+ALBUM 254572 "Absolutely"
+DURATION_MS 211408
+PROVIDERIDS MusicBrainzAlbumArtist=87199477-b0df-4ead-84ee-9b54b4abfc3d,MusicBrainzArtist=87199477-b0df-4ead-84ee-9b54b4abfc3d,MusicBrainzAlbum=37ee2e47-f935-3339-b389-532a7deaf505,MusicBrainzReleaseGroup=57d535bc-5963-3a96-827e-b97de9fee60d,MusicBrainzTrack=dfaa096c-0625-32c7-aade-af80dc4b153f
+ALBUMARTIST "ABC" mbid=87199477-b0df-4ead-84ee-9b54b4abfc3d
+ARTIST "ABC" mbid=87199477-b0df-4ead-84ee-9b54b4abfc3d
+COMPOSER "Anne Dudley" mbid=0b0bd0c0-3723-4715-87d7-9d57f0eb240f
+COMPOSER "Martin Fry" mbid=bc6f40cf-05da-40c2-9c53-209e48b1f0b7
+COMPOSER "Mark Lickley" mbid=6d4c3c0a-9afa-4862-baf7-a29d1025e1fd
+COMPOSER "Stephen Singleton" mbid=d2c42bbd-5d4b-4d7d-acee-9c117cc2675d
+COMPOSER "Mark White" mbid=cc98b5fe-cb30-4239-b89d-52b34a0546e1
+
+
+
+ARTIST 666de7b191c54dbdbfbd3307e2d4c10a "The Dream Machine"
+TRACK 97bb7896fe256b9c7592d6861b046700 "Traditional"
+ALBUM 255359 "Marantz Hi-End Audiophile Test Demo SACD"
+DURATION_MS 248346
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=8a986e82-eb05-4238-8240-1f47ea0563d3,MusicBrainzAlbum=e6495122-4c72-4a8d-a0e5-9151d07ffbc6,MusicBrainzReleaseGroup=92314ce2-343c-4cb8-90a5-2609aa12fc74,MusicBrainzTrack=65c870e4-381f-4421-8f3e-a1b3d9e18454
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "The Dream Machine" mbid=8a986e82-eb05-4238-8240-1f47ea0563d3
+COMPOSER "Phil Lynott" mbid=6af15841-1d62-495a-8b52-74eb6d603c5f
+
+ARTIST b26c031eaf9a48959673551d8c7eb9a1 "Mark Hamilton"
+TRACK f4416bb6f31dcccda04d1be0565d1bf2 "Jesus Says"
+ALBUM 255278 "Intergalactic Sonic 7s"
+DURATION_MS 284081
+PROVIDERIDS MusicBrainzAlbumArtist=99164692-c02d-407c-81c9-25d338dd21f4,MusicBrainzArtist=99164692-c02d-407c-81c9-25d338dd21f4,MusicBrainzAlbum=e24af62d-ab91-358d-9552-0624e8a95ab4,MusicBrainzReleaseGroup=33f91f8c-0720-329f-a459-94ae4dd26de1,MusicBrainzTrack=f4d34621-ec31-3a21-8d76-c36db0ce6da9
+ALBUMARTIST "Ash" mbid=99164692-c02d-407c-81c9-25d338dd21f4
+ARTIST "Ash" mbid=99164692-c02d-407c-81c9-25d338dd21f4
+COMPOSER "Mark Hamilton" mbid=b3ce4b44-c430-48e6-af57-e4682a2035c0
+
+
 ARTIST 3da66a2deacf4f5196f5f8cd8279f0f6 "Mos Def"
 TRACK bb502f2d3af2d0e13adc28e2813b830c "Stylo"
 ALBUM 270161 "Triple J Hottest 100 of 2010"
