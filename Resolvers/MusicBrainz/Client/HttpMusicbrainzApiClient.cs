@@ -93,25 +93,18 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             // hits score inherently lower in MB's own relevance ranking than a direct
             // name hit -- ArtistStrategy uses that score, plus which field
             // (name-vs-alias) actually matched, to decide sort tier.
-            var escaped = EscapeLucene(name);
-            var primaryQuery = $"(artist:\"{escaped}\" OR alias:\"{escaped}\")";
+            //
+            // Query construction itself (primary query, fallback rung, nickname-quote
+            // weighting) lives in MusicBrainzQueryBuilder, not here -- extracted
+            // 2026-07-29 per one-file-one-purpose: this class is transport (HTTP,
+            // DTOs, caching), not search-syntax strategy.
+            var primaryQuery = MusicBrainzQueryBuilder.BuildArtistPrimaryQuery(name);
             var results = RunArtistSearch(primaryQuery, name);
             var queryUsed = primaryQuery;
 
             if (results.Count == 0)
             {
-                // Fallback rung, added 2026-07-29: the primary query above quotes
-                // both fields, so MB's Lucene parser treats each as an exact phrase
-                // and effectively requires every word to match in order -- a source
-                // name that differs from MB's stored form only in word order, a
-                // missing/extra word, etc. gets zero results even though a matching
-                // artist exists. This fallback drops the quotes (unquoted terms are
-                // OR'd/ranked by relevance instead of exact-phrase matched) and drops
-                // the alias clause (unquoted alias search alone was too noisy/broad
-                // to be worth the extra call). Only tried when the primary query
-                // above found nothing, so it costs no extra API call on the common
-                // path.
-                var fallbackQuery = $"artist:{escaped}";
+                var fallbackQuery = MusicBrainzQueryBuilder.BuildArtistFallbackQuery(name);
                 _logger.Debug("MbApi", "  -> primary SearchArtist query returned 0 results, trying fallback rung: {0}", fallbackQuery);
                 results = RunArtistSearch(fallbackQuery, name);
                 queryUsed = fallbackQuery;
@@ -194,18 +187,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // builds the query/URL/description only -- it makes no HTTP call itself.
         private (string Url, string CallDesc) BuildSearchRecordingQuery(string trackTitle, string? albumTitle, IEnumerable<string>? artistNames)
         {
-            var parts = new List<string> { $"recording:\"{EscapeLucene(trackTitle)}\"" };
-            if (!string.IsNullOrWhiteSpace(albumTitle))
-                parts.Add($"release:\"{EscapeLucene(albumTitle)}\"");
+            var query = MusicBrainzQueryBuilder.BuildRecordingSearchQuery(trackTitle, albumTitle, artistNames);
+            var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=25";
+
             var artistNameList = (artistNames ?? Enumerable.Empty<string>())
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .Distinct()
                 .ToList();
-            if (artistNameList.Count > 0)
-                parts.Add($"artist:({string.Join(" OR ", artistNameList.Select(n => $"\"{EscapeLucene(n)}\""))})");
-            var query = string.Join(" AND ", parts);
-
-            var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=25";
             var callDesc = $"track=\"{trackTitle}\" album=\"{albumTitle ?? "(none)"}\" artist=\"{(artistNameList.Count > 0 ? string.Join(" OR ", artistNameList) : "(none)")}\"";
             return (url, callDesc);
         }
@@ -390,17 +378,6 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             return results;
         }
 
-        // MusicBrainz's own duration-bucketing width for the "qdur" search field --
-        // INFERRED, not confirmed against MB documentation: reverse-engineered from
-        // one working query (351000ms observed -> qdur:[173 TO 177] worked; 351/2 =
-        // 175.5, which centers in that window). Not a config value, deliberately --
-        // this isn't a lever we control, it's a guess at a fixed property of MB's
-        // own index. If a future duration range shows this assumption breaking,
-        // fix it here, in one place, with a name that says exactly what's being
-        // assumed (2026-07-19, per direct correction from Nick on the earlier draft
-        // that wrongly treated this as configurable).
-        private const int AssumedMbQdurBucketSeconds = 2;
-
         // Added 2026-07-19 for the TrackDuration rung (§7.2 "Bohemian Rhapsody"
         // trace): title + qdur range search, used once album and artist have both
         // already failed as narrowing fields. limit=100 (not the usual 25) because
@@ -416,13 +393,13 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
         // structural change left for a deliberate follow-up, not bundled in here.
         // See BuildSearchRecordingQuery's doc comment above -- same rationale, added
         // at the same time (2026-07-24), for this rung's query instead.
+        //
+        // Query text itself (including qdur bucket math / AssumedMbQdurBucketSeconds)
+        // now lives in MusicBrainzQueryBuilder -- extracted 2026-07-29, same
+        // one-file-one-purpose rationale as SearchArtist's query construction above.
         private (string Url, string CallDesc, int Low, int High) BuildSearchRecordingByTitleAndDurationQuery(string trackTitle, int observedDurationMs, int qdurToleranceBuckets)
         {
-            int centerBucket = (int)Math.Round(observedDurationMs / 1000.0 / AssumedMbQdurBucketSeconds);
-            int low = Math.Max(0, centerBucket - qdurToleranceBuckets);
-            int high = centerBucket + qdurToleranceBuckets;
-
-            var query = $"recording:\"{EscapeLucene(trackTitle)}\" AND qdur:[{low} TO {high}]";
+            var (query, low, high) = MusicBrainzQueryBuilder.BuildRecordingByTitleAndDurationQuery(trackTitle, observedDurationMs, qdurToleranceBuckets);
             var url = $"recording?query={Uri.EscapeDataString(query)}&fmt=json&limit=100";
             var callDesc = $"track=\"{trackTitle}\" qdur=[{low} TO {high}] (observedMs={observedDurationMs})";
             return (url, callDesc, low, high);
@@ -675,9 +652,6 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         private static int ParseScore(string? score)
             => int.TryParse(score, out var parsed) ? parsed : 0;
-
-        private static string EscapeLucene(string value)
-            => value.Replace("\\", "\\\\").Replace("\"", "\\\"");
 
         // ---- DTOs (DataContractJsonSerializer needs [DataMember(Name=...)] for
         // every JSON key that isn't a valid C# identifier as-is, e.g. hyphenated
