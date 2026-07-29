@@ -211,7 +211,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
                 Console.WriteLine("--- Evidence pathway usage (contributing evidence only) ---");
                 foreach (var (key, total, artistsWithAny) in evidenceTotals)
                 {
-                    Console.WriteLine($"  {key,-55} total={total,-6} artists-with-any={artistsWithAny}");
+                    Console.WriteLine($"  {key,-68} total={total,-6} artists-with-any={artistsWithAny}");
                 }
             }
 

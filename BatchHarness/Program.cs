@@ -222,7 +222,8 @@ static Dictionary<string, int> BuildEvidenceCountsByKey(IReadOnlyList<EvidenceRe
             if (!e.EvidenceType.StartsWith("CorroborationTier", StringComparison.OrdinalIgnoreCase))
                 return $"{role}.{e.EvidenceType}";
             var via = e.MatchedViaRelationship ? "ViaRelationship" : "ViaPerformer";
-            return $"{role}.{e.EvidenceType}.{via}";
+            var rung = string.IsNullOrEmpty(e.Rung) ? "NoRung" : e.Rung;
+            return $"{role}.{e.EvidenceType}.{rung}.{via}";
         }, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);
 }

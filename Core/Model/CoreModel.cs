@@ -106,6 +106,14 @@ namespace MetadataHealthCheck.v2.Core.Model
         // seen enough of these in real logs to know it's worth the cost (see
         // AlbumMatchEvidenceCollector, parked the same way).
         public bool Contributing { get; set; } = true;
+        // Added 2026-07-28: the specific rung (TrackArtistAlbum/TrackArtist/TrackAlbum/
+        // TrackDuration/TrackOnly) a CorroborationTier hit was confirmed at. Null for
+        // any evidence type that isn't rung-based. Raw fact only, same status as
+        // MatchedViaAlias/MatchedViaRelationship above -- lets reporting/analysis break
+        // evidence down by the actual rung reached, not just the coarser Tier1/2/3
+        // grouping (e.g. TrackArtist and TrackAlbum both map to Tier2, but are
+        // different rungs worth seeing separately).
+        public string? Rung { get; set; }
         public string Rationale { get; set; } = "";               // human-readable sentence — always populated, §5.6
     }
 

@@ -175,6 +175,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
                 MatchedViaAlias = lookup.MatchedViaAlias,
                 MatchedViaRelationship = matchedViaRelationship,
                 RelationshipType = relationshipTypeForRecord,
+                Rung = lookup.RungReached.ToString(),
                 Rationale = $"MusicBrainz {tierDescription} corroboration for \"{track.TrackName}\"{aliasNote}{confirmationNote} (rung={lookup.RungReached}, mbScore={rec.Score}).",
             };
         }
