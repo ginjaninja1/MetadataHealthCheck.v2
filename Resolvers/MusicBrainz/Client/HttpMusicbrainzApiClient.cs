@@ -78,6 +78,14 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
 
         // ---- C1: artist search ----------------------------------------------
 
+        // Added 2026-07-29: the query actually used to produce the most recent
+        // SearchArtist result set (primary or fallback rung -- see SearchArtist
+        // below). Same "expose what was actually done" rationale as
+        // DescribeSearchRecordingUrl/DescribeSearchRecordingByTitleAndDurationUrl;
+        // lets ArtistStrategy log/record the real query instead of assuming the
+        // primary one was used.
+        public string? LastSearchArtistQueryUsed { get; private set; }
+
         public IReadOnlyList<MbArtistResult> SearchArtist(string name)
         {
             // Rewritten 2026-07-18 per Nick's direction: explicit alias search, not
@@ -86,7 +94,35 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
             // name hit -- ArtistStrategy uses that score, plus which field
             // (name-vs-alias) actually matched, to decide sort tier.
             var escaped = EscapeLucene(name);
-            var query = $"(artist:\"{escaped}\" OR alias:\"{escaped}\")";
+            var primaryQuery = $"(artist:\"{escaped}\" OR alias:\"{escaped}\")";
+            var results = RunArtistSearch(primaryQuery, name);
+            var queryUsed = primaryQuery;
+
+            if (results.Count == 0)
+            {
+                // Fallback rung, added 2026-07-29: the primary query above quotes
+                // both fields, so MB's Lucene parser treats each as an exact phrase
+                // and effectively requires every word to match in order -- a source
+                // name that differs from MB's stored form only in word order, a
+                // missing/extra word, etc. gets zero results even though a matching
+                // artist exists. This fallback drops the quotes (unquoted terms are
+                // OR'd/ranked by relevance instead of exact-phrase matched) and drops
+                // the alias clause (unquoted alias search alone was too noisy/broad
+                // to be worth the extra call). Only tried when the primary query
+                // above found nothing, so it costs no extra API call on the common
+                // path.
+                var fallbackQuery = $"artist:{escaped}";
+                _logger.Debug("MbApi", "  -> primary SearchArtist query returned 0 results, trying fallback rung: {0}", fallbackQuery);
+                results = RunArtistSearch(fallbackQuery, name);
+                queryUsed = fallbackQuery;
+            }
+
+            LastSearchArtistQueryUsed = queryUsed;
+            return results;
+        }
+
+        private List<MbArtistResult> RunArtistSearch(string query, string name)
+        {
             var url = $"artist?query={Uri.EscapeDataString(query)}&fmt=json&limit=25";
             var body = Get(url, "SearchArtist", $"name=\"{name}\"");
             var parsed = body == null ? null : DeserializeJson<ArtistSearchResponseDto>(body);

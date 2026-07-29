@@ -141,7 +141,20 @@ namespace MetadataHealthCheck.v2.Core.Model
         // UNVALIDATED PLACEHOLDER, same status as ArtistCandidateMaxEditDistance above
         // -- a "suck it and see" knob, no default yet asserted as correct; revisit
         // once the 70k-artist run gives real data to tune against.
-        public double DurationGateTolerancePercent { get; set; } = 0.03;
+        public double DurationGateTolerancePercent { get; set; } = 0.05;
+
+        // Added 2026-07-29: lets the recording-length gate be switched off entirely.
+        // The gate exists to disambiguate the PerformerOnly (name-based) pathway, where
+        // MB relevance score gives no disambiguation power on its own (see
+        // DurationGateTolerancePercent's own comment). The RelationshipOnly pathway
+        // (Composer bucket) confirms by exact MBID match against relationship data --
+        // a fundamentally stricter check that doesn't need a duration pre-filter to
+        // avoid false positives, and the gate can only cost it a correct-but-
+        // differently-timed recording (e.g. a movement/edit length variance) being
+        // excluded before its relationship data is ever scanned. Default true
+        // (unchanged behavior); set false per Nick's 2026-07-29 direction that the
+        // gate isn't warranted once the RelationshipOnly pathway existed.
+        public bool EnableRecordingDurationGate { get; set; } = false;
 
         // Settled directive (2026-07-18): missing duration data on a candidate
         // recording is NOT a disqualification -- only a CONFIRMED mismatch excludes.

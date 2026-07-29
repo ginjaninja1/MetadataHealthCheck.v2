@@ -173,6 +173,12 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client
     public interface IMusicBrainzApiClient
     {
         IReadOnlyList<MbArtistResult> SearchArtist(string name);                                  // C1
+
+        // Added 2026-07-29: the query actually used by the most recent SearchArtist
+        // call -- the quoted artist/alias primary query, or the unquoted artist-only
+        // fallback rung if the primary found nothing. Null before SearchArtist has
+        // ever been called.
+        string? LastSearchArtistQueryUsed { get; }
         IReadOnlyList<MbAlbumTitle> GetReleaseGroupTitles(string artistMbid);                       // C2 (subset)
 
         // Extended 2026-07-12 with an artistNames parameter (nullable, defaults to null so

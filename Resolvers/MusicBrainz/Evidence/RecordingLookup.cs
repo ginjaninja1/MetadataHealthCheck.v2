@@ -654,6 +654,9 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Evidence
         // guessing.
         private IEnumerable<MbRecordingResult> ApplyDurationGate(IReadOnlyList<MbRecordingResult> recordings, TimeSpan? observedDuration)
         {
+            if (!_config.EnableRecordingDurationGate)
+                return recordings;
+
             if (!observedDuration.HasValue)
                 return recordings;
 

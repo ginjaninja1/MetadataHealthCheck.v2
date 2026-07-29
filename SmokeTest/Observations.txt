@@ -36,6 +36,83 @@
 # something genuine to walk through.
 # ---------------------------------------------------------------------------
 
+ARTIST cd2f745dc7a744028fc8653166ab16fe "Jamie 'Cookie' Cook"
+TRACK 73bf9a3c810d846ad7d33182c28fefa3 "The Jeweller's Hands"
+ALBUM 255218 "Humbug"
+DURATION_MS 342053
+PROVIDERIDS MusicBrainzAlbumArtist=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a,MusicBrainzArtist=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a,MusicBrainzAlbum=86308d0d-0f63-4837-afcb-f7ef742f3a9e,MusicBrainzReleaseGroup=23b7e9e9-8820-4a49-b44f-a7a60e0a7e81,MusicBrainzTrack=07c78486-648d-4387-8c6d-03777cd44513
+ALBUMARTIST "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+ARTIST "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+COMPOSER "Jamie 'Cookie' Cook"
+COMPOSER "Matt Helders" mbid=e7ae3e08-43f5-4c19-81e9-34f16b00fbc2
+COMPOSER "Nick O'Malley" mbid=c24c68b3-abcd-4fd3-9173-296c46a699bd
+COMPOSER "Alex Turner" mbid=ee953029-6de8-4c50-8d0f-215a1e4e8dd6
+
+TRACK 6ced8b7a12f88d6338d6bf729d3c2d60 "If You Were There, Beware"
+ALBUM 255216 "Favourite Worst Nightmare"
+DURATION_MS 274259
+PROVIDERIDS MusicBrainzAlbumArtist=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a,MusicBrainzArtist=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a,MusicBrainzAlbum=85feb97d-40fb-4637-9d28-30d0f20e490f,MusicBrainzReleaseGroup=f113fa38-7908-3ec9-8145-d2455e78a8b2,MusicBrainzTrack=6512091f-963c-4bd6-a503-637af5f1b6bd
+ALBUMARTIST "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+ARTIST "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+COMPOSER "Jamie 'Cookie' Cook"
+COMPOSER "Matt Helders" mbid=e7ae3e08-43f5-4c19-81e9-34f16b00fbc2
+COMPOSER "Nick O'Malley" mbid=c24c68b3-abcd-4fd3-9173-296c46a699bd
+
+TRACK a4676ccaa351f6241a03ecbb68088a86 "Don't Sit Down 'cause I've Moved Your Chair"
+ALBUM 255219 "Suck It and See"
+DURATION_MS 183666
+PROVIDERIDS MusicBrainzAlbumArtist=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a,MusicBrainzArtist=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a,MusicBrainzAlbum=3db118d9-3a44-4e7a-b86b-fed4aefa550c,MusicBrainzReleaseGroup=ffdc0fd3-e726-4e98-af19-d3274ede2311,MusicBrainzTrack=fc0b0e61-105f-3251-a824-0597e1577544
+ALBUMARTIST "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+ARTIST "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+COMPOSER "Arctic Monkeys" mbid=ada7a83c-e3e1-40f1-93f9-3e73dbc9298a
+COMPOSER "Jamie 'Cookie' Cook"
+COMPOSER "Matt Helders" mbid=e7ae3e08-43f5-4c19-81e9-34f16b00fbc2
+COMPOSER "Nick O'Malley" mbid=c24c68b3-abcd-4fd3-9173-296c46a699bd
+
+
+
+ARTIST 85738b2072814efda9ed9a3e30f8f855 "Jaques Petite"
+TRACK d8df1328ee9db0580a500c8d5889a9cf "Pop Enré"
+ALBUM 255359 "Marantz Hi-End Audiophile Test Demo SACD"
+DURATION_MS 312746
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=9bc80b10-998c-41c6-beef-a9e8012c6ce8,MusicBrainzAlbum=e6495122-4c72-4a8d-a0e5-9151d07ffbc6,MusicBrainzReleaseGroup=92314ce2-343c-4cb8-90a5-2609aa12fc74,MusicBrainzTrack=72e83921-7d61-4fa2-9979-0d94dc1f9d7e
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "L'imprevu Saxofoonkwartet" mbid=9bc80b10-998c-41c6-beef-a9e8012c6ce8
+COMPOSER "Jaques Petite"
+
+ARTIST 9a5f4f56571b4743bcbb219daa368109 "Ade Omotayo"
+TRACK 393541e8743ad9b36360295ed1c7695c "Hey Little Rich Girl"
+ALBUM 255089 "Back to Black"
+DURATION_MS 214706
+PROVIDERIDS MusicBrainzAlbumArtist=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3,MusicBrainzArtist=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3/19c43212-18cf-4f02-baff-b794de3cdf02/399ae9ed-1817-41f7-bb8e-6f952f1ee935,MusicBrainzAlbum=917d379a-b7a2-3097-8594-cca84ab338b7,MusicBrainzReleaseGroup=6eac2e57-ee50-36f8-b0c4-c4c847a2c098,MusicBrainzTrack=dd25db33-564d-30ad-8e46-b84cde136606
+ALBUMARTIST "Amy Winehouse" mbid=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3
+ARTIST "Amy Winehouse" mbid=dfe9a7c4-8cf2-47f4-9dcb-d233c2b86ec3
+ARTIST "Zalon Thompson" mbid=19c43212-18cf-4f02-baff-b794de3cdf02
+ARTIST "Ade Omotayo" mbid=399ae9ed-1817-41f7-bb8e-6f952f1ee935
+COMPOSER "Roddy Radiation" mbid=4b77ee87-f413-42cb-860e-854c5e7b3a5a
+
+ARTIST be0557002b054490acbfede4816be5b7 "Dmitri Dmitrievich Shostakovich"
+TRACK 89d494a91b03c018612933c002e3f887 "Symphony no. 10 in E minor, op. 93: II. Allegro"
+ALBUM 255387 "McIntosh Audiophile Test Reference"
+DURATION_MS 268706
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=519dd32e-8f30-4380-8826-7aa99169e1bb,MusicBrainzAlbum=1d820c85-2ed1-4dcf-a9e0-0f3635cca32f,MusicBrainzReleaseGroup=4d9f7080-1aad-4be9-9472-a06a3448edc7,MusicBrainzTrack=0af9c971-b14b-3f26-9236-3a247f5f00eb
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "Dmitri Shostakovich" mbid=519dd32e-8f30-4380-8826-7aa99169e1bb
+COMPOSER "Dmitri Dmitrievich Shostakovich"
+
+TRACK 2efe4700554054aee7062a1bd6cbe65b "iLL Manors (clean radio edit)"
+ALBUM 267609 "Now That's What I Call Music! 82"
+DURATION_MS 226716
+PROVIDERIDS MusicBrainzAlbumArtist=89ad4ac3-39f7-470e-963a-56509c546377,MusicBrainzArtist=daf84e36-f78e-4c94-a032-6aed138c0d34,MusicBrainzAlbum=f03f1861-3949-491b-93ca-2d0a8d4f8d4e,MusicBrainzReleaseGroup=93f3aa3b-93bf-4ce1-a2df-e131dd3d5512,MusicBrainzTrack=d273a2b9-a98d-3e68-ba8f-9f1aa6d105b6
+ALBUMARTIST "Various Artists" mbid=89ad4ac3-39f7-470e-963a-56509c546377
+ARTIST "Plan B" mbid=daf84e36-f78e-4c94-a032-6aed138c0d34
+COMPOSER "Pierre Baigorry" mbid=9eb44032-14b6-4f70-9267-f7f7144a7feb
+COMPOSER "David Conen" mbid=21923f76-f8d8-415e-b778-857a656e4022
+COMPOSER "Plan B" mbid=daf84e36-f78e-4c94-a032-6aed138c0d34
+COMPOSER "Vincent von Schlippenbach" mbid=b2f7131e-86da-494d-b1fc-25ba088acb32
+COMPOSER "Dmitri Dmitrievich Shostakovich"
+COMPOSER "Al Shux" mbid=3da7c19e-9e09-41c3-8420-d834f6c95f51
+
 ARTIST 24607b97447d4c46be5119edf4058784 "Yann Stephane Mickael Macé"
 TRACK e52c196794304f51c648f6f28c8b496f "Welcome to the Alesha Show"
 ALBUM 254746 "The Alesha Show"

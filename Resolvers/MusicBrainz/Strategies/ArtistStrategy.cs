@@ -18,7 +18,10 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
     ///   1. SearchArtist(source.DisplayName) now queries MusicBrainz with
     ///      (artist:"NAME" OR alias:"NAME") (see HttpMusicBrainzApiClient) -- alias
     ///      hits are found by MB's own search, not just carried inline on
-    ///      name-matched results.
+    ///      name-matched results. Added 2026-07-29: if that quoted query returns
+    ///      zero results, HttpMusicBrainzApiClient falls back to an unquoted,
+    ///      name-field-only artist:NAME query (no exact-phrase enforcement, no
+    ///      alias clause) before giving up entirely.
     ///   2. Admission gate is MB's own text-relevance Score alone
     ///      (ScoringConfig.CandidateGeneration.ArtistCandidateMinScore). Per Nick's
     ///      direction 2026-07-18: "we don't need closeness to achieve [finding the
@@ -201,7 +204,7 @@ namespace MetadataHealthCheck.v2.Resolvers.MusicBrainz.Strategies
                     Name = result.Name,
                     Type = result.Type,
                     GenerationStrategy = StrategyName,
-                    GenerationQuery = $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
+                    GenerationQuery = _client.LastSearchArtistQueryUsed ?? $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
                     CreatedAt = DateTime.UtcNow,
                     RelationshipMbids = relationships.Select(r => r.Mbid).ToList(),
                     // Added 2026-07-27: same source data as RelationshipMbids above, just
