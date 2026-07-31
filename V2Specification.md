@@ -195,91 +195,11 @@ namespace MetadataHealthCheck.v2.Core.Model
 
 ## 5. Resolution Pipeline
 
-### 5.1 Candidate Generation and Confirmation
+### 5.1 Candidate Generation
 
-Candidate generation is a single mechanism in two stages — there is no
-separate generation strategy for any bucket (AlbumArtist/Artist/Composer).
-Stage 1 admits candidates by name; Stage 2 confirms each admitted candidate
-against the artist's own observed tracks. Both stages apply identically
-regardless of whether the Emby entity being resolved is an album artist, a
-performing artist, or a composer — MusicBrainz treats all of these as
-artists, retrievable via the same `/artist` endpoint.
+#### 5.1.1 Artist Candidate Generation
 
-**Stage 1 — Admission gate** (candidate generation, one-time per artist,
-contributes zero evidence). Query `artist:"{source artist name}"` (§7.2,
-call C1) to get a pool of candidate artists **and their registered
-aliases** in one call. Normalize both the Emby-tagged name and each
-candidate's primary name/every alias using a configurable replacement table
-(§10.3 `NameNormalizationRules`: strip leading "The", fold `&`/`and`/`+`,
-strip apostrophes, strip `feat`/`featuring`/`vs`/`with` credit suffixes,
-strip punctuation, fold case, collapse whitespace, normalize diacritics).
-Compute Levenshtein distance; name and every alias weighted **equally** —
-the question is only "does this MBID deserve a `/recording` lookup at all."
-Admit if the best distance across name-or-any-alias clears
-`ScoringConfig.CandidateGeneration.ArtistCandidateMaxEditDistance`.
-**Contributes nothing to the LLR sum.**
-
-`ScoringConfig.CandidateGeneration.ArtistCandidateMinScore` (MusicBrainz's
-own C1 relevance `score`, 0–100) is a distinct, separate gate, defaulted to
-**0** (inert until real tuning data exists).
-
-**Stage 2 — Recording-level confirmation** (per track, repeatable, real
-evidence weight). For each admitted candidate, search MusicBrainz
-recordings from the artist's own observed tracks via the shared per-track
-recording lookup (`RecordingLookup`, §5.3), and check whether the
-candidate's MBID appears in the response. This is the same lookup-and-
-confirm step for every bucket — the only thing that varies is the query
-fields used and the part of the response searched:
-
-- **AlbumArtist/Artist-tier observations**: the candidate's own name is a
-  valid recording-search field. Query trackname+artistname+albumname,
-  falling back to trackname+albumname, falling back to trackname alone,
-  until a hit is found. Confirmation is expected in the artist-credit field
-  of the response.
-- **Composer-tier observations**: the candidate is not the recording's
-  performing artist, so their name cannot be used to constrain the search.
-  Query trackname+albumname, falling back to trackname alone. Confirmation
-  is sought by scanning the recording response's relationship data
-  (work-rels/work-level-rels for composer/writer credits, recording-level
-  artist-rels for producer/arranger credits) for the candidate's MBID,
-  rather than the artist-credit field.
-
-Whether a candidate is a composer, an album artist, or a performer,
-generation and confirmation both work the same way in the end: find a
-candidate MBID inside a recording response. Only the query shape and the
-field searched change with bucket.
-
-Each recording lookup rung risks its own false-positive shape; accepted as
-a known, low-probability-in-practice risk, relying on the shared
-name-match evaluator's rejection of poor matches as the real safety net
-(§5.2). Every lookup records which rung produced its result
-(`RecordingLookupRung`, diagnostic-only for now). Implemented once, shared,
-and memoized per (candidate, track) pair
-(`Resolvers/MusicBrainz/Evidence/RecordingLookup.cs`).
-
-**Known accepted trade-off**: admitting candidates by name/alias match
-first risks *excluding* a correct candidate upfront if its real
-MusicBrainz artist-credit text doesn't resemble the Emby-tagged name and
-isn't in MB's own registered alias list (a genuine MB data-completeness
-gap). The Stage 1 threshold is deliberately loose — a marginal name match
-can still be admitted and let Stage 2's real track evidence decide it.
-
-**Unconfirmed — to be validated against real cases (e.g. Gus Black, Del
-Serino) once the pipeline is running, not treated as settled in advance:**
-- Whether Composer-tier confirmation should check *only* the relationship
-  fields expected for that bucket, or always check both artist-credit and
-  relationship fields regardless of bucket (a track's participants can
-  genuinely appear in both).
-- The exact fallback rung order for Composer-tier lookups —
-  trackname+albumname then trackname-alone is the working assumption.
-
-**Parked, out of scope for now**: constraining a recording lookup using
-another, already-confirmed artist on the same observation as an "anchor"
-(e.g. using a confirmed "Adele" to help resolve a composer-only "Gus Black"
-credited on the same track) is a plausible future refinement, retained in
-the data model and config (§9 `anchor_dependencies`, §10.1 `Anchoring`) but
-not implemented or used by any pipeline logic described in this document.
-Revisit once Stage 1/Stage 2 above are proven out.
+#### 5.1.2 Recording Cnaiddate Generation
 
 ### 5.2 Evidence Collection Rules
 
@@ -330,7 +250,7 @@ Revisit once Stage 1/Stage 2 above are proven out.
 ### 5.3 Track Observation Feeder and Sequential Resolution Engine
 
 The **Track Observation Feeder** (§5.3.1) is a pre-engine step that selects
-and orders which Emby track to observe next. The **Sequential Resolution
+and orders which Emby track to observe next for an Emby Artist. The **Sequential Resolution
 Engine** (below) takes each fed observation, generates/confirms candidates
 against it, accumulates evidence, and decides when to stop. The feeder knows
 nothing about candidates or LLR; the engine knows nothing about track
@@ -339,37 +259,6 @@ Composer), which affects the role-weight multiplier (§6.2) and which
 confirmation query/field-search variant Stage 2 uses (§5.1) — Composer-tier
 observations use the relationship-scan variant rather than a separate
 generation strategy.
-
-The stopping rule and the sampling budget are the same mechanism.
-
-```
-running_llr = 0
-for bucket in [AlbumArtist, Artist, Composer]:          # highest signal first
-    for obs in feed_from_bucket(bucket):                 # ordered by the Feeder, §5.3.1
-        running_llr += evidence_llr(obs) × role_weight(bucket)   # §6.2
-        if running_llr >= AutoAcceptThreshold:
-            STOP → auto-accept                            # may fire after a single observation
-        if running_llr <= AutoRejectThreshold:
-            STOP → auto-reject
-        if observations_taken_in(bucket) >= BucketCeiling[bucket]:
-            break                                          # exhausted this bucket's budget — escalate to next bucket
-if no bound was crossed after all buckets/budgets exhausted:
-    STOP → needs-review
-```
-
-`BucketCeiling` (default: AlbumArtist 3, Artist 4, Composer 6) is a sampling
-**budget**, not a target — the actual stop can occur anywhere from the first
-observation up to the ceiling.
-
-**Important**: the pseudocode above is written per-candidate for
-readability, but the engine evaluates every live candidate **jointly, one
-round at a time** — not one candidate's loop run to completion in isolation.
-This is required by §5.5's margin check, which compares the top candidate's
-cumulative LLR against the runner-up's: that comparison is only meaningful
-if every live candidate has had the same observations at the same point.
-Concretely: draw one observation, score it against *every* live candidate,
-check the decision gate, and only then draw the next observation if neither
-condition is met.
 
 #### 5.3.1 Track Observation Feeder — Distance-Seeking Order
 

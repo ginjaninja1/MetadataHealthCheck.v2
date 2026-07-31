@@ -46,13 +46,6 @@
 		<Compile Remove="BatchHarness/**/*.cs" />
 	</ItemGroup>
 	<ItemGroup>
-	  <Compile Remove="Resolvers\MusicBrainz\Evidence\CorroborationTierEvidenceCollector.cs" />
-	  <Compile Remove="Resolvers\MusicBrainz\Evidence\ProviderEvidenceCollector.cs" />
-	  <Compile Remove="Resolvers\MusicBrainz\Evidence\RecordingRelationshipEvidenceCollector.cs" />
-	  <Compile Remove="Resolvers\MusicBrainz\Evidence\WorkRelationshipEvidenceCollector.cs" />
-	</ItemGroup>
-
-	<ItemGroup>
 		<None Update="V2Specification.md">
 			<SubType>Component</SubType>
 		</None>

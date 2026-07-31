@@ -7,11 +7,8 @@ namespace MetadataHealthCheck.v2.Sources.Emby
     {
         private readonly IEmbyLibraryReader _reader;
 
-        // Comma-separated; each token tried as a Guid first, falling back to
-        // case-insensitive name match; empty = no restriction. Mirrors
-        // DeveloperConfig.ArtistFilter (§10.2) — full DeveloperConfig object
-        // arrives in Phase 5 alongside the config pages; this constructor
-        // param is the Phase 1 stand-in for that one field.
+        // Comma-separated; each token tried as a Guid first, falling back to a
+        // case-insensitive name match; null/empty means no restriction.
         private readonly string? _artistFilter;
 
         public EmbyArtistProvider(IEmbyLibraryReader reader, string? artistFilter = null)
@@ -27,11 +24,9 @@ namespace MetadataHealthCheck.v2.Sources.Emby
             if (string.IsNullOrWhiteSpace(_artistFilter))
                 return all;
 
-            // StringSplitOptions.TrimEntries requires netstandard2.1+/.NET Core 3+
-            // and isn't available under this project's netstandard2.0 target - trim
-            // manually instead. Also using the char[]-array Split overload rather
-            // than the single-char one, since that convenience overload isn't
-            // guaranteed present in netstandard2.0's own API surface either.
+            // netstandard2.0 has neither StringSplitOptions.TrimEntries nor the
+            // single-char Split convenience overload -- trim manually and use
+            // the char[]-array overload instead.
             var tokens = _artistFilter
                 .Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(t => t.Trim())

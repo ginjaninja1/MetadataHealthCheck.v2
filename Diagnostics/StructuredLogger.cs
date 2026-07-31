@@ -1,17 +1,11 @@
 namespace MetadataHealthCheck.v2.Diagnostics
 {
     /// <summary>
-    /// §15.5: single call site, two outputs. Phase 1 sink is Console (plus an
-    /// in-memory buffer for test assertions) — the real Emby ILogger-scoped
-    /// sink is wired once the exact "get a logger scoped by name" call is
-    /// confirmed against a real Emby host (§15.1's listed unverified item,
-    /// §20.4).
-    ///
-    /// Console output is optional (writeToConsole, default true) so callers
-    /// running many loggers concurrently against a single console -- e.g.
-    /// BatchHarness, one StructuredLogger per worker -- can suppress
-    /// Console.WriteLine while still keeping the in-memory Lines buffer for
-    /// later inspection (e.g. dumping a failing artist's trace on error).
+    /// Single logging call site with two outputs: an in-memory line buffer
+    /// (for test assertions and dumping a failing entity's trace on error) and,
+    /// optionally, Console. Console output can be suppressed per instance so
+    /// callers running many loggers concurrently against one console can keep
+    /// only the in-memory buffer.
     /// </summary>
     public class StructuredLogger
     {

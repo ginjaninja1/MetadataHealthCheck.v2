@@ -5,25 +5,27 @@ using MetadataHealthCheck.v2.Diagnostics;
 namespace MetadataHealthCheck.v2.Core.Engine
 {
     /// <summary>
-    /// §3.2's pipeline: identity cache check → candidate generation (Strategy A
-    /// then B, priority order) → the Sequential Sampler (§5.5, Core/Engine/
-    /// SequentialSampler.cs) — adaptive, early-stopping evidence collection and
-    /// scoring, replacing Phase 1's "collect everything, then score once" loop
-    /// — → repository writes.
+    /// Top-level resolution pipeline: identity cache check, candidate generation
+    /// (strategies in priority order), sequential sampling (adaptive, early-
+    /// stopping evidence collection and scoring), then repository writes. Generic
+    /// over both the source entity type and the resolver's own config type, so
+    /// Core never references a specific resolver.
     /// </summary>
-    public class ResolutionEngine
+    public class ResolutionEngine<TSourceEntity, TConfig>
+        where TSourceEntity : ISourceEntity
+        where TConfig : IScoringConfig
     {
-        private readonly IResolverPlugin<Sources.Emby.EmbyArtist> _plugin;
+        private readonly IResolverPlugin<TSourceEntity, TConfig> _plugin;
         private readonly IMatchRepository _repository;
         private readonly IIdentityCache _identityCache;
-        private readonly ScoringConfig _scoringConfig;
+        private readonly TConfig _scoringConfig;
         private readonly StructuredLogger _logger;
 
         public ResolutionEngine(
-            IResolverPlugin<Sources.Emby.EmbyArtist> plugin,
+            IResolverPlugin<TSourceEntity, TConfig> plugin,
             IMatchRepository repository,
             IIdentityCache identityCache,
-            ScoringConfig scoringConfig,
+            TConfig scoringConfig,
             StructuredLogger logger)
         {
             _plugin = plugin;
@@ -33,26 +35,26 @@ namespace MetadataHealthCheck.v2.Core.Engine
             _logger = logger;
         }
 
-        public MatchResult ResolveOne(Sources.Emby.EmbyArtist artist, ResolutionContext context)
+        public MatchResult ResolveOne(TSourceEntity source, ResolutionContext context)
         {
-            var cached = _identityCache.Get(artist.SourceSystem, artist.SourceId, _plugin.TargetSystem);
+            var cached = _identityCache.Get(source.SourceSystem, source.SourceId, _plugin.TargetSystem);
             if (cached != null)
             {
-                _logger.Info("Engine", "Identity cache hit for {0} -> {1}, reusing.", artist.DisplayName, cached.TargetId);
+                _logger.Info("Engine", "Identity cache hit for {0} -> {1}, reusing.", source.DisplayName, cached.TargetId);
                 return cached;
             }
 
             var candidates = _plugin.Strategies
                 .OrderBy(s => s.Priority)
-                .SelectMany(s => s.GenerateCandidates(artist, context))
+                .SelectMany(s => s.GenerateCandidates(source, context))
                 .ToList();
 
-            _logger.Debug("CandidateGen", "{0} candidates generated for {1}.", candidates.Count, artist.DisplayName);
+            _logger.Debug("CandidateGen", "{0} candidates generated for {1}.", candidates.Count, source.DisplayName);
 
             foreach (var candidate in candidates)
                 _repository.SaveCandidate(candidate);
 
-            var sampler = new SequentialSampler<Sources.Emby.EmbyArtist>(
+            var sampler = new SequentialSampler<TSourceEntity, TConfig>(
                 _plugin.ObservationEvidenceCollectors,
                 _plugin.RoundBasedObservationEvidenceCollectors,
                 _plugin.ObservationUnitProvider,
@@ -61,18 +63,17 @@ namespace MetadataHealthCheck.v2.Core.Engine
                 _plugin.DecisionGate,
                 _logger);
 
-            var decision = sampler.Resolve(artist, candidates, _scoringConfig, _repository, context);
+            var decision = sampler.Resolve(source, candidates, _scoringConfig, _repository, context);
 
-            // See ArtistStrategy.cs's fold-pass doc comment: this rule is on
-            // probation, so any actual fold forces needs_review regardless of
-            // what the LLR/margin math produced -- checked BEFORE the
-            // auto-accept identity-cache write below, so a folded auto-accept
-            // is never cached as confirmed.
+            // A candidate identity fold is a probationary rule: any fold forces
+            // needs_review regardless of what the LLR/margin math produced, checked
+            // before the auto-accept identity-cache write below so a folded
+            // auto-accept is never cached as confirmed.
             if (context.CandidateFoldOccurred && decision.Status != "needs_review")
             {
                 _logger.Info("Engine",
                     "Overriding decision status '{0}' -> 'needs_review' for {1}: candidate fold occurred this run. {2}",
-                    decision.Status, artist.DisplayName, string.Join(" ", context.FoldNotes));
+                    decision.Status, source.DisplayName, string.Join(" ", context.FoldNotes));
                 decision.Status = "needs_review";
                 decision.DecisionReason = "forced_needs_review_candidate_fold";
             }
@@ -80,15 +81,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
             _repository.SaveMatchResult(decision);
 
             if (decision.Status == "auto_accept")
-                _identityCache.Set(artist.SourceSystem, artist.SourceId, decision.TargetSystem, decision.TargetId, decision.Confidence);
+                _identityCache.Set(source.SourceSystem, source.SourceId, decision.TargetSystem, decision.TargetId, decision.Confidence);
 
-            // Removed 2026-07-17: this used to log the decision (status/confidence)
-            // here unconditionally. StructuredLogger has no level filtering, so
-            // downgrading to Debug didn't actually suppress it -- it kept appearing,
-            // ahead of SmokeTest/Program.cs's own dedicated "STAGE: decision" ->
-            // PrintDecision step, leaking the outcome before the evidence-summary
-            // stage that's meant to come first. Removed rather than relabeled, since
-            // PrintDecision already reports exactly this information at the right point.
             return decision;
         }
     }

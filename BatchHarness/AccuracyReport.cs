@@ -22,7 +22,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
         public string Decision { get; set; } = "";           // MatchResult.Status: auto_accept | auto_reject | needs_review
         // Added 2026-07-28: MatchResult.DecisionReason, e.g.
         // "forced_needs_review_candidate_fold" when ResolutionEngine's fold-override
-        // (see ArtistStrategy's fold-pass doc comment) downgraded an otherwise
+        // (see ArtistCandidateStrategy's fold-pass doc comment) downgraded an otherwise
         // auto_accept/auto_reject decision. Null/empty for a decision that was never
         // overridden -- i.e. ThresholdDecisionGate's own status stands unchanged.
         public string? DecisionReason { get; set; }
@@ -164,7 +164,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
 
                 // Added 2026-07-28: how many rows carry a non-empty DecisionReason
                 // (currently only "forced_needs_review_candidate_fold", set by
-                // ResolutionEngine's fold-override -- see ArtistStrategy's fold-pass
+                // ResolutionEngine's fold-override -- see ArtistCandidateStrategy's fold-pass
                 // doc comment). Answers "how much of the needs_review total is an
                 // override, versus a genuine LLR/margin shortfall" without needing to
                 // open the CSV.

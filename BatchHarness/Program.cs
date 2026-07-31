@@ -10,15 +10,15 @@ using MetadataHealthCheck.v2.BatchHarness;
 using MetadataHealthCheck.v2.Core.Engine;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Diagnostics;
-using MetadataHealthCheck.v2.Fixtures;
-using MetadataHealthCheck.v2.Resolvers.MusicBrainz;
-using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
-using MetadataHealthCheck.v2.Scoring;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
 
-// Headless batch runner: same real engine, real ScoringConfig, and real
+// Headless batch runner: same real engine, real ArtistMusicBrainzConfig, and real
 // HttpMusicBrainzApiClient as SmokeTest, but with no per-artist pause and
 // bounded parallelism, over an extracted dataset rather than one hand-built
 // observations.txt. Purpose: measure accuracy (against known-correct MBIDs)
@@ -34,7 +34,7 @@ using SmokeTest;
 // identity cache (see BuildStack() below) -- no shared mutable state crosses
 // a thread boundary. This costs some cache reuse across artists (an artist
 // name/alias looked up by worker 1 isn't visible to worker 2), which is an
-// acceptable trade for correctness; ScoringConfig itself IS shared across all
+// acceptable trade for correctness; ArtistMusicBrainzConfig itself IS shared across all
 // workers since it's read-only settings data (confirmed: no field on it is
 // ever written to after construction).
 //
@@ -87,7 +87,7 @@ if (maxRows.HasValue && maxRows.Value < artists.Count)
 Console.WriteLine($"Loaded {artists.Count} artist(s) from {observationsPath}.");
 Console.WriteLine($"Running with max concurrency = {maxConcurrency}.\n");
 
-var scoringConfig = new ScoringConfig(); // shared: read-only, safe across workers -- see header note
+var scoringConfig = new ArtistMusicBrainzConfig(); // shared: read-only, safe across workers -- see header note
 var rows = new System.Collections.Concurrent.ConcurrentBag<BatchResultRow>();
 var overallStopwatch = Stopwatch.StartNew();
 var completed = 0;
@@ -111,7 +111,7 @@ await Parallel.ForEachAsync(
         try
         {
             var repo = new InMemoryMatchRepository();
-            var engine = new ResolutionEngine(plugin, repo, identityCache, scoringConfig, logger);
+            var engine = new ResolutionEngine<EmbyArtist, ArtistMusicBrainzConfig>(plugin, repo, identityCache, scoringConfig, logger);
 
             // Per-artist context: CandidateFoldOccurred/FoldNotes must start fresh for
             // EVERY artist -- see ResolutionContext's own field comments. RunId/
@@ -193,8 +193,8 @@ static (StructuredLogger logger, HttpMusicBrainzApiClient mbClient, InMemoryIden
     var logger = new StructuredLogger(writeToConsole: false); // suppress per-artist console spam; keeps Lines buffer for on-error inspection
     var mbClient = new HttpMusicBrainzApiClient(logger);
     var identityCache = new InMemoryIdentityCache();
-    var scoringConfigForPlugin = new ScoringConfig(); // plugin ctor requires one; shared config values are identical to the outer one
-    var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfigForPlugin, logger);
+    var scoringConfigForPlugin = new ArtistMusicBrainzConfig(); // plugin ctor requires one; shared config values are identical to the outer one
+    var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfigForPlugin, logger);
     return (logger, mbClient, identityCache, plugin);
 }
 

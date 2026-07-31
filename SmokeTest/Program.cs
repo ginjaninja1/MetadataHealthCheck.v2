@@ -1,10 +1,11 @@
 ﻿using MetadataHealthCheck.v2.Core.Engine;
 using MetadataHealthCheck.v2.Core.Model;
+using MetadataHealthCheck.v2.Core.Validation;
 using MetadataHealthCheck.v2.Diagnostics;
-using MetadataHealthCheck.v2.Fixtures;
-using MetadataHealthCheck.v2.Resolvers.MusicBrainz;
-using MetadataHealthCheck.v2.Resolvers.MusicBrainz.Client;
-using MetadataHealthCheck.v2.Scoring;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
@@ -42,16 +43,16 @@ Console.WriteLine("Uses an in-memory IMatchRepository, not real SQLite -- see In
 var logger = new StructuredLogger();
 var mbClient = new HttpMusicBrainzApiClient(logger);
 var identityCache = new InMemoryIdentityCache();
-var scoringConfig = new ScoringConfig();
+var scoringConfig = new ArtistMusicBrainzConfig();
 var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboard, not part of resolution itself
 
-var plugin = new MusicBrainzArtistResolverPlugin(mbClient, identityCache, scoringConfig, logger);
+    var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfig, logger);
 
 Banner("STAGE: evidence/weight consistency check");
 var configFindings = EvidenceConfigValidator.Validate(plugin.EvidenceCollectors, plugin.ObservationEvidenceCollectors, plugin.RoundBasedObservationEvidenceCollectors, scoringConfig.EvidenceWeights);
 if (configFindings.Count == 0)
 {
-    Console.WriteLine("No issues found: every ScoringConfig.EvidenceWeights entry is declared by some registered collector, and every declared weighted evidence type has a matching weight entry.\n");
+    Console.WriteLine("No issues found: every ArtistMusicBrainzConfig.EvidenceWeights entry is declared by some registered collector, and every declared weighted evidence type has a matching weight entry.\n");
 }
 else
 {
@@ -97,7 +98,7 @@ foreach (var artist in artists)
     // scoping of its own, and reusing one across artists isn't needed for what
     // this smoke test measures.
     var repo = new InMemoryMatchRepository();
-    var engine = new ResolutionEngine(plugin, repo, identityCache, scoringConfig, logger);
+    var engine = new ResolutionEngine<EmbyArtist, ArtistMusicBrainzConfig>(plugin, repo, identityCache, scoringConfig, logger);
 
     // Per-artist context: CandidateFoldOccurred/FoldNotes must start fresh for
     // EVERY artist -- see ResolutionContext's own field comments. Reusing the
@@ -185,7 +186,7 @@ static void PrintObservationAvailability(EmbyArtist artist)
     Console.WriteLine("(AlbumArtist/Artist confirm via performer-credit only; Composer confirms via relationship-scan only.)");
 }
 
-static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, SimpleWeightedSumScorer scorer, HttpMusicBrainzApiClient mbClient)
+static void PrintScoreboard(InMemoryMatchRepository repo, ArtistMusicBrainzConfig config, SimpleWeightedSumScorer scorer, HttpMusicBrainzApiClient mbClient)
 {
     Console.WriteLine($"\n--- ARTIST EVIDENCE SUMMARY  ({repo.Candidates.Count} candidate(s) generated) ---");
     if (repo.Candidates.Count == 0)
@@ -215,7 +216,7 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
         // generation-time debugging detail, not evidence, and it crowded out the
         // one thing worth seeing at a glance: the artist's name. "matched via" /
         // "admitted via" wording was considered and dropped -- there is currently
-        // only one admission pathway (ArtistStrategy's artist-search stage), so a
+        // only one admission pathway (ArtistCandidateStrategy's artist-search stage), so a
         // per-candidate "how was this admitted" line has nothing to distinguish.
         // What IS useful at the candidate level is the actual identity data the
         // candidate carries forward into recording-side matching: its own MBID
@@ -235,7 +236,7 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
         // totals (see SimpleWeightedSumScorer.Score), summed only over this
         // candidate's Contributing=true evidence records. They are not a property
         // of any single evidence record (a record's own contribution is its
-        // EvidenceType's weight in ScoringConfig.EvidenceWeights, printed per type
+        // EvidenceType's weight in ArtistMusicBrainzConfig.EvidenceWeights, printed per type
         // below) and not a single global figure across all candidates -- each
         // candidate ranked here has its own LLR/confidence, independently computed.
 
@@ -286,7 +287,7 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ScoringConfig config, 
     }
 }
 
-static void PrintDecision(MatchResult result, ScoringConfig config)
+static void PrintDecision(MatchResult result, ArtistMusicBrainzConfig config)
 {
     Console.WriteLine($"\n--- DECISION ---");
     Console.WriteLine($"  status={result.Status}  target={result.TargetId}  confidence={result.Confidence:F3}  margin={result.Margin:F2}");

@@ -1,35 +1,35 @@
-﻿using MetadataHealthCheck.v2.Core.Interfaces;
+using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Diagnostics;
 
 namespace MetadataHealthCheck.v2.Core.Engine
 {
     /// <summary>
-    /// §5.5's adaptive, one-observation-at-a-time evidence loop. Runs across all
+    /// The adaptive, one-observation-at-a-time evidence loop. Runs across all
     /// live candidates jointly, not one candidate to completion in isolation --
-    /// §18's worked example requires the margin between the top candidate and its
-    /// runner-up to be checked after every single new observation, which only
-    /// makes sense if every live candidate is scored in lockstep each round.
+    /// the margin between the top candidate and its runner-up is checked after
+    /// every single new observation, which only makes sense if every live
+    /// candidate is scored in lockstep each round.
     ///
-    /// Generic over TSourceEntity and has no knowledge of "tracks" or "AlbumArtist/
-    /// Artist/Composer" -- that's entirely IObservationUnitProvider's business
-    /// (§11.4's extensibility requirement). An entity type with no observation
-    /// concept at all (ObservationUnitProvider == null) still gets a valid result:
-    /// static evidence is scored once and that's the final answer, identical to
-    /// Phase 1's behavior before this file existed.
+    /// Generic over TSourceEntity and TConfig, with no knowledge of any
+    /// resolver's own bucket/observation-unit vocabulary -- that's entirely
+    /// IObservationUnitProvider's business. An entity type with no observation
+    /// concept at all (ObservationUnitProvider == null) still gets a valid
+    /// result: static evidence is scored once and that's the final answer.
     /// </summary>
-    public class SequentialSampler<TSourceEntity> where TSourceEntity : ISourceEntity
+    public class SequentialSampler<TSourceEntity, TConfig>
+        where TSourceEntity : ISourceEntity
+        where TConfig : IScoringConfig
     {
         private readonly IEnumerable<IObservationEvidenceCollector<TSourceEntity>> _observationCollectors;
         private readonly IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> _roundBasedCollectors;
         private readonly IObservationUnitProvider<TSourceEntity>? _unitProvider;
-        // Added 2026-07-27: optional, per-bucket candidate narrowing (e.g. Composer
-        // bucket folding a Group candidate into its live Person band-member). Null means
-        // no filtering anywhere -- every bucket's candidate list is exactly `candidates`,
-        // identical to behavior before this field existed.
+
+        // Optional, per-bucket candidate narrowing. Null means no filtering
+        // anywhere -- every bucket's candidate list is exactly `candidates`.
         private readonly IBucketCandidateFilter? _bucketCandidateFilter;
-        private readonly IBeliefScorer _scorer;
-        private readonly IDecisionGate _decisionGate;
+        private readonly IBeliefScorer<TConfig> _scorer;
+        private readonly IDecisionGate<TConfig> _decisionGate;
         private readonly StructuredLogger _logger;
 
         public SequentialSampler(
@@ -37,8 +37,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
             IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedCollectors,
             IObservationUnitProvider<TSourceEntity>? unitProvider,
             IBucketCandidateFilter? bucketCandidateFilter,
-            IBeliefScorer scorer,
-            IDecisionGate decisionGate,
+            IBeliefScorer<TConfig> scorer,
+            IDecisionGate<TConfig> decisionGate,
             StructuredLogger logger)
         {
             _observationCollectors = observationCollectors;
@@ -50,17 +50,15 @@ namespace MetadataHealthCheck.v2.Core.Engine
             _logger = logger;
         }
 
-        public MatchResult Resolve(TSourceEntity source, List<Candidate> candidates, ScoringConfig config, IMatchRepository repository, ResolutionContext context)
+        public MatchResult Resolve(TSourceEntity source, List<Candidate> candidates, TConfig config, IMatchRepository repository, ResolutionContext context)
         {
             var evidenceByCandidate = candidates.ToDictionary(c => c.Id, c => new List<EvidenceRecord>());
 
-            // Added 2026-07-27: candidate lookup + display-label resolution, purely for
-            // logging. candidatesById exists because round-based collectors key their
-            // per-round dictionaries by Candidate.Id (an internal GUID -- see
-            // evidenceByCandidate above), so a round's log line needs to map back to the
-            // actual Candidate to get its Name/TargetId. nameCounts drives the
-            // "Name|MBID" vs bare "Name" choice below: only disambiguate with the MBID
-            // when two live candidates actually share a display name.
+            // candidatesById lets a round-based collector's per-round dictionary
+            // (keyed by Candidate.Id) resolve back to the actual Candidate for
+            // logging. nameCounts drives the "Name|MBID" vs bare "Name" choice in
+            // FormatCandidateLabel: only disambiguate with the target id when two
+            // live candidates actually share a display name.
             var candidatesById = candidates.ToDictionary(c => c.Id);
             var nameCounts = candidates
                 .Select(c => string.IsNullOrEmpty(c.Name) ? c.TargetId : c.Name)
@@ -69,28 +67,15 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
             Banner($"BEGIN RESOLUTION: {source.DisplayName}");
 
-            // Removed 2026-07-28 (settled directive): the STATIC EVIDENCE phase
-            // (§5.4/§5.2's album-match precursor) looped over _staticCollectors, but
-            // NameDistanceEvidenceCollector -- the only collector ever wired into it --
-            // was unwired the same day (pure Contributing=false noise, nothing read
-            // it). The early-return branch that used to follow it ("resolved from
-            // static evidence alone") is removed too, since with no static evidence
-            // source left it could never fire. `decision` itself is still initialized
-            // here (rather than only inside the loop below) because it's read by the
-            // final fallback `return decision;` if every bucket budget is exhausted
-            // without ever entering the loop body (e.g. an entity with zero
-            // observations) -- ScoreAndDecide against empty evidence yields the same
-            // needs_review result that used to fall through from the removed static
-            // phase, so this preserves that behavior exactly. Re-add the full static
-            // phase if a genuine static collector (e.g. the parked
-            // AlbumMatchEvidenceCollector) is ever wired back in.
+            // `decision` covers the case of zero observations ever being drawn
+            // (e.g. no buckets, or every bucket empty): scoring empty evidence
+            // yields a needs_review result, which is then returned as-is below.
             var decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
 
-            // Step 2: per-observation sampling, bucket by bucket (highest signal
-            // first), unit by unit within a bucket, stopping the instant any bound
-            // is crossed. BucketCeiling is a safety cap on grinding through a low-
-            // signal bucket forever, not a target to reach (§5.5).
-            // new:
+            // Per-observation sampling, bucket by bucket (highest signal first),
+            // unit by unit within a bucket, stopping the instant any decision
+            // threshold is crossed. BucketCeiling is a safety cap on grinding
+            // through a low-signal bucket forever, not a target to reach.
             if (_unitProvider != null && (_observationCollectors.Any() || _roundBasedCollectors.Any()))
             {
                 foreach (var bucket in _unitProvider.GetOrderedBuckets(source, context))
@@ -99,15 +84,16 @@ namespace MetadataHealthCheck.v2.Core.Engine
                     foreach (var unit in bucket)
                     {
                         int ceiling = config.BucketCeiling.TryGetValue(unit.BucketKey, out var c) ? c : int.MaxValue;
-                        if (drawn >= ceiling) break; // bucket's budget exhausted -- escalate to next bucket
+                        if (drawn >= ceiling) break;
 
                         Banner($"OBSERVATION #{drawn + 1} ({unit.BucketKey} bucket): {unit.Describe()}");
 
-                        // Added 2026-07-27: narrow the live candidate set for THIS bucket only,
-                        // if the plugin registered a filter. `candidates` (the full list used for
-                        // evidenceByCandidate/scoring/nameCounts/candidatesById above) is untouched --
-                        // a filtered-out candidate just doesn't get new evidence collected for it in
-                        // this bucket; its running LLR from any other bucket stands as-is.
+                        // Narrow the live candidate set for THIS bucket only, if the
+                        // plugin registered a filter. `candidates` (the full list used
+                        // for evidenceByCandidate/scoring/nameCounts/candidatesById
+                        // above) is untouched -- a filtered-out candidate just doesn't
+                        // get new evidence collected for it in this bucket; its
+                        // running LLR from any other bucket stands as-is.
                         var bucketCandidates = _bucketCandidateFilter?.Filter(unit.BucketKey, candidates, context) ?? candidates;
 
                         foreach (var candidate in bucketCandidates)
@@ -129,32 +115,23 @@ namespace MetadataHealthCheck.v2.Core.Engine
                             var opportunistic = candidateRecords.Where(r => !r.Contributing).ToList();
 
                             foreach (var record in contributing)
-                            {
                                 LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
-                            }
+
                             if (opportunistic.Count > 0)
                             {
                                 _logger.Debug("Sampler", "  [{0}] ---- opportunistic evidence below (not scored, informational only) ----", FormatCandidateLabel(candidate, nameCounts));
                                 foreach (var record in opportunistic)
-                                {
                                     LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
-                                }
                                 _logger.Debug("Sampler", "  [{0}] ---- end opportunistic evidence ----", FormatCandidateLabel(candidate, nameCounts));
                             }
                         }
-                        // Added 2026-07-23: round-based collectors (currently just
-                        // RecordingCorroborationEvidenceCollector) check ALL live candidates
-                        // jointly per round, re-scoring and checking the decision gate after
-                        // EVERY round (not just once per whole observation) -- because these
-                        // helpers are yield-return-based, stopping here (foreach+break) means
-                        // the next round's API call (e.g. the next recording's
-                        // GetRelationships) genuinely never fires. See
-                        // IRoundBasedObservationEvidenceCollector's own doc comment.
-                        //
-                        // NOTE 2026-07-27: round dictionaries are keyed by Candidate.Id (the
-                        // internal GUID, matching evidenceByCandidate's key), NOT TargetId --
-                        // candidatesById below maps that back to the real Candidate so the log
-                        // line can show a name instead of a meaningless GUID.
+
+                        // Round-based collectors check ALL live candidates jointly per
+                        // round, re-scoring and checking the decision gate after EVERY
+                        // round (not just once per whole observation): because these
+                        // collectors are yield-return-based, stopping here (break)
+                        // means the next round's underlying lookup genuinely never
+                        // fires. See IRoundBasedObservationEvidenceCollector.
                         bool stoppedMidObservation = false;
                         foreach (var collector in _roundBasedCollectors)
                         {
@@ -165,13 +142,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
                                     var candidateId = roundKvp.Key;
                                     var records = roundKvp.Value;
                                     var roundCandidate = candidatesById[candidateId];
-                                    foreach (var record in records.Where(r => r.Contributing))
-                                    {
-                                        evidenceByCandidate[candidateId].Add(record);
-                                        repository.SaveEvidence(record);
-                                        LogEvidence(roundCandidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
-                                    }
-                                    foreach (var record in records.Where(r => !r.Contributing))
+                                    foreach (var record in records)
                                     {
                                         evidenceByCandidate[candidateId].Add(record);
                                         repository.SaveEvidence(record);
@@ -189,11 +160,10 @@ namespace MetadataHealthCheck.v2.Core.Engine
                             if (stoppedMidObservation) break;
                         }
 
-                        // Unconditional recompute: guards against a stale `decision` from a
-                        // PRIOR observation when this observation's round-based collectors
-                        // produced zero rounds (e.g. nothing confirmed at all) -- without
-                        // this, the check below could act on last observation's result.
-                        // Harmless/idempotent when stoppedMidObservation is already true.
+                        // Unconditional recompute guards against a stale `decision`
+                        // from a prior observation when this observation's round-based
+                        // collectors produced zero rounds. Harmless/idempotent when
+                        // stoppedMidObservation is already true.
                         decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
 
                         drawn++;
@@ -219,11 +189,10 @@ namespace MetadataHealthCheck.v2.Core.Engine
             _logger.Info("Sampler", "================================================================");
         }
 
-        // Added 2026-07-27: human-readable candidate label for logging only -- never
-        // used for identity/matching decisions. Falls back to the MBID when Name is
-        // unset (e.g. Strategy A candidates, which don't currently carry a name), and
-        // only appends "|MBID" when two live candidates in THIS resolution share the
-        // same display name.
+        // Human-readable candidate label for logging only -- never used for
+        // identity/matching decisions. Falls back to the target id when Name is
+        // unset, and only appends "|target id" when two live candidates in this
+        // resolution share the same display name.
         private static string FormatCandidateLabel(Candidate candidate, Dictionary<string, int> nameCounts)
         {
             var label = string.IsNullOrEmpty(candidate.Name) ? candidate.TargetId : candidate.Name;
@@ -232,22 +201,18 @@ namespace MetadataHealthCheck.v2.Core.Engine
                 : label;
         }
 
-        private void LogEvidence(Candidate candidate, Dictionary<string, int> nameCounts, EvidenceRecord record, ScoringConfig config, string prefix, string indent, string? bucketKey = null)
+        private void LogEvidence(Candidate candidate, Dictionary<string, int> nameCounts, EvidenceRecord record, TConfig config, string prefix, string indent, string? bucketKey = null)
         {
             var weight = config.EvidenceWeights.TryGetValue(record.EvidenceType, out var w) ? w.ToString("F2") : "n/a";
             var bucketPart = bucketKey != null ? $" {bucketKey}" : "";
             var label = FormatCandidateLabel(candidate, nameCounts);
             if (record.Contributing)
-            {
                 _logger.Debug("Sampler", "{0}[{1}] {2}{3} (weight={4}){5} :: {6}", indent, label, prefix, record.EvidenceType, weight, bucketPart, record.Rationale);
-            }
             else
-            {
                 _logger.Debug("Sampler", "{0}[{1}] {2}{3} [opportunistic - not scored]{4} :: {5}", indent, label, prefix, record.EvidenceType, bucketPart, record.Rationale);
-            }
         }
 
-        private MatchResult ScoreAndDecide(TSourceEntity source, List<Candidate> candidates, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, ScoringConfig config)
+        private MatchResult ScoreAndDecide(TSourceEntity source, List<Candidate> candidates, Dictionary<string, List<EvidenceRecord>> evidenceByCandidate, TConfig config)
         {
             var scored = candidates.Select(c => _scorer.Score(c, evidenceByCandidate[c.Id].Where(e => e.Contributing), config)).ToList();
             return _decisionGate.Decide(scored, config, source.SourceSystem, source.SourceId);
