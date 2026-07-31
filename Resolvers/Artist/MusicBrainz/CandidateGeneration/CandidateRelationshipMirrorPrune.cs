@@ -21,6 +21,11 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
     /// Unlike CandidateIdentityFoldPass, this does not merge two hypotheses
     /// into one -- the candidates remain genuinely independent competitors,
     /// this only stops one relationship fact from scoring as evidence for both.
+    ///
+    /// Runs on ArtistCandidateStrategy's local attributesByCandidate list,
+    /// before it's attached to any surviving Candidate via
+    /// ArtistCandidateAttributeSet -- Candidate itself carries no MusicBrainz-
+    /// specific fields.
     /// </summary>
     internal class CandidateRelationshipMirrorPrune
     {
@@ -30,6 +35,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
 
         public List<string>[] Apply(
             IReadOnlyList<Candidate> candidates,
+            IReadOnlyList<ArtistCandidateAttributeSet.Attributes> attributesByCandidate,
             bool[] folded,
             IReadOnlyList<IReadOnlyList<AdmittedArtistRelationship>> relationshipsByCandidate)
         {
@@ -42,10 +48,11 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
                 if (folded[i]) continue;
 
                 var candidate = candidates[i];
-                var mirrored = candidate.RelationshipMbids.Where(m => liveCandidateIds.Contains(m)).ToList();
+                var attributes = attributesByCandidate[i];
+                var mirrored = attributes.RelationshipMbids.Where(m => liveCandidateIds.Contains(m)).ToList();
                 if (mirrored.Count == 0) continue;
 
-                candidate.RelationshipMbids = candidate.RelationshipMbids.Where(m => !liveCandidateIds.Contains(m)).ToList();
+                attributes.RelationshipMbids = attributes.RelationshipMbids.Where(m => !liveCandidateIds.Contains(m)).ToList();
                 foreach (var m in mirrored)
                 {
                     var mirroredName = relationshipsByCandidate[i].FirstOrDefault(r => r.Mbid == m)?.Name ?? m;

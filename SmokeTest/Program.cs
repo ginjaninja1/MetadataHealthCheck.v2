@@ -3,6 +3,7 @@ using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Core.Validation;
 using MetadataHealthCheck.v2.Diagnostics;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneration;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring;
@@ -46,7 +47,7 @@ var identityCache = new InMemoryIdentityCache();
 var scoringConfig = new ArtistMusicBrainzConfig();
 var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboard, not part of resolution itself
 
-    var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfig, logger);
+var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfig, logger);
 
 Banner("STAGE: evidence/weight consistency check");
 var configFindings = EvidenceConfigValidator.Validate(plugin.EvidenceCollectors, plugin.ObservationEvidenceCollectors, plugin.RoundBasedObservationEvidenceCollectors, scoringConfig.EvidenceWeights);
@@ -120,7 +121,7 @@ foreach (var artist in artists)
     Pause();
 
     Banner("STAGE: artist evidence summary");
-    PrintScoreboard(repo, scoringConfig, scorer, mbClient);
+    PrintScoreboard(repo, scoringConfig, scorer, mbClient, artistContext);
     Pause();
 
     Banner("STAGE: decision");
@@ -186,7 +187,7 @@ static void PrintObservationAvailability(EmbyArtist artist)
     Console.WriteLine("(AlbumArtist/Artist confirm via performer-credit only; Composer confirms via relationship-scan only.)");
 }
 
-static void PrintScoreboard(InMemoryMatchRepository repo, ArtistMusicBrainzConfig config, SimpleWeightedSumScorer scorer, HttpMusicBrainzApiClient mbClient)
+static void PrintScoreboard(InMemoryMatchRepository repo, ArtistMusicBrainzConfig config, SimpleWeightedSumScorer scorer, HttpMusicBrainzApiClient mbClient, ResolutionContext context)
 {
     Console.WriteLine($"\n--- ARTIST EVIDENCE SUMMARY  ({repo.Candidates.Count} candidate(s) generated) ---");
     if (repo.Candidates.Count == 0)
@@ -195,6 +196,7 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ArtistMusicBrainzConfi
         return;
     }
 
+    var attributeSet = ArtistCandidateAttributeSet.GetOrEmpty(context);
     var scored = repo.Candidates
         // BUG FIX 2026-07-17: this was scoring from repo.Evidence unfiltered, silently
         // re-including Contributing=false (opportunistic) evidence in LLR/confidence
@@ -226,9 +228,10 @@ static void PrintScoreboard(InMemoryMatchRepository repo, ArtistMusicBrainzConfi
         // by eye whether a later "matched via: relationship MBID" line makes sense.
         Console.WriteLine($"  #{i + 1}  {name}");
         Console.WriteLine($"        artist MBID: {s.Candidate.TargetId}");
-        if (s.Candidate.RelationshipMbids.Count > 0)
+        var relationshipMbids = attributeSet.Get(s.Candidate).RelationshipMbids;
+        if (relationshipMbids.Count > 0)
         {
-            Console.WriteLine($"        relationship MBIDs: {string.Join(", ", s.Candidate.RelationshipMbids)}");
+            Console.WriteLine($"        relationship MBIDs: {string.Join(", ", relationshipMbids)}");
         }
         Console.WriteLine($"        LLR={s.RunningLlr:F2}  confidence={s.Confidence:F3}  evidence={s.EvidenceSoFar.Count} contributing record(s)");
 

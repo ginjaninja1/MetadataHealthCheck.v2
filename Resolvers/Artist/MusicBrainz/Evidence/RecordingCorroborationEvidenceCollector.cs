@@ -1,5 +1,6 @@
 using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Core.Model;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneration;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client;
 using MetadataHealthCheck.v2.Sources.Emby;
 
@@ -56,9 +57,10 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
                 recordedPerformerNames = track.AlbumArtists.Select(a => a.Name).Where(n => !string.IsNullOrWhiteSpace(n)).ToList();
 
             var candidateMbids = candidates.Select(c => c.TargetId).ToList();
+            var attributeSet = ArtistCandidateAttributeSet.GetOrEmpty(context);
             var relationshipMbidsByCandidate = candidates.ToDictionary(
                 c => c.TargetId,
-                c => (IReadOnlyList<string>)(c.RelationshipMbids?.ToList() ?? new List<string>()));
+                c => attributeSet.Get(c).RelationshipMbids);
             var candidateByMbid = candidates.ToDictionary(c => c.TargetId, c => c);
 
             var mode = ConfirmationModeForBucket(trackUnit.BucketKey);

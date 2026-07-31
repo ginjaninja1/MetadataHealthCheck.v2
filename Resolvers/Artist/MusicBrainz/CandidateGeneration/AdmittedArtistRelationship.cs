@@ -4,8 +4,9 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
 {
     // One artist-relationship admitted onto a candidate during generation.
     // Classification exists only so the identity-fold pass can filter to
-    // same-identity relations -- Candidate.RelationshipMbids collapses every
-    // admitted relationship into one equal-weight list regardless of Classification.
+    // same-identity relations -- ArtistCandidateAttributeSet.Attributes.RelationshipMbids
+    // collapses every admitted relationship into one equal-weight list
+    // regardless of Classification.
     internal class AdmittedArtistRelationship
     {
         public string Name { get; set; } = "";

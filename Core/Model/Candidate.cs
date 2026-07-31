@@ -1,5 +1,6 @@
 namespace MetadataHealthCheck.v2.Core.Model
 {
+    // the universal "what are we guessing, and against what" envelope
     public class Candidate
     {
         public string Id { get; set; } = Guid.NewGuid().ToString("N");
@@ -15,18 +16,5 @@ namespace MetadataHealthCheck.v2.Core.Model
         public string GenerationStrategy { get; set; } = "";
         public string GenerationQuery { get; set; } = "";
         public DateTime CreatedAt { get; set; }
-
-        // MBIDs of other artists this candidate is known to be related to
-        // (e.g. "performs as"/"is person"), for corroboration and identity folding.
-        public IReadOnlyList<string> RelationshipMbids { get; set; } = Array.Empty<string>();
-
-        // MusicBrainz's own artist "type" (e.g. "Person", "Group"). Not a candidate-
-        // admission gate; used only by pathway-local bucket filters.
-        public string Type { get; set; } = "";
-
-        // Subset of RelationshipMbids specifically representing group-membership
-        // relationships (e.g. "member of band"), for bucket filters that need to
-        // distinguish this from identity relationships.
-        public IReadOnlyList<string> GroupMembershipMbids { get; set; } = Array.Empty<string>();
     }
 }

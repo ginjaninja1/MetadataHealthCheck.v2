@@ -47,6 +47,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
             var admitted = AdmitSearchResults(source, cgConfig);
 
             var finalCandidates = new List<Candidate>();
+            var attributesByCandidate = new List<ArtistCandidateAttributeSet.Attributes>();
             var relationshipsByCandidate = new List<IReadOnlyList<AdmittedArtistRelationship>>();
             var identityRelationshipMbidsByCandidate = new List<IReadOnlyList<string>>();
             var tiers = new List<ArtistMatchTier>();
@@ -68,10 +69,13 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
                     TargetEntityType = "Artist",
                     TargetId = result.Mbid,
                     Name = result.Name,
-                    Type = result.Type,
                     GenerationStrategy = StrategyName,
                     GenerationQuery = _client.LastSearchArtistQueryUsed ?? $"(artist:\"{source.DisplayName}\" OR alias:\"{source.DisplayName}\")",
                     CreatedAt = DateTime.UtcNow,
+                });
+                attributesByCandidate.Add(new ArtistCandidateAttributeSet.Attributes
+                {
+                    Type = result.Type,
                     RelationshipMbids = relationships.Select(r => r.Mbid).ToList(),
                     GroupMembershipMbids = relationships
                         .Where(r => r.Classification == ArtistRelationshipClassification.GroupMembership)
@@ -81,14 +85,21 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
             }
 
             var folded = _foldPass.Apply(finalCandidates, tiers, identityRelationshipMbidsByCandidate, context);
-            var prunedNamesByCandidate = _mirrorPrune.Apply(finalCandidates, folded, relationshipsByCandidate);
+            var prunedNamesByCandidate = _mirrorPrune.Apply(finalCandidates, attributesByCandidate, folded, relationshipsByCandidate);
 
             LogSummary(finalCandidates, admitted, relationshipsByCandidate, folded, prunedNamesByCandidate);
 
+            // One attribute set for this whole resolution, stored on context
+            // once -- Filter/CollectRounds retrieve it via
+            // ArtistCandidateAttributeSet.GetOrEmpty(context) using the same
+            // ResolutionContext instance passed to this call.
+            var attributeSet = new ArtistCandidateAttributeSet();
+            context.SetExtension(attributeSet);
             for (int i = 0; i < finalCandidates.Count; i++)
             {
-                if (!folded[i])
-                    yield return finalCandidates[i];
+                if (folded[i]) continue;
+                attributeSet.Set(finalCandidates[i].Id, attributesByCandidate[i]);
+                yield return finalCandidates[i];
             }
         }
 

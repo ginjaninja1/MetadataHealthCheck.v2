@@ -36,7 +36,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config
         };
 
         // Which MusicBrainz artist-relationship type-ids are admitted onto a
-        // candidate at all (Candidate.RelationshipMbids), each tagged with a
+        // candidate at all (ArtistCandidateAttributeSet.Attributes.RelationshipMbids), each tagged with a
         // Classification. Every admitted type is equal weight for scoring; the
         // classification exists only so the identity-fold pass (ArtistCandidateStrategy)
         // can tell "is person" apart from "member of band" -- fold only ever acts

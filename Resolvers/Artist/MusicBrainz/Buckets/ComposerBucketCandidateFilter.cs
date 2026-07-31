@@ -1,6 +1,7 @@
 using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Diagnostics;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneration;
 
 namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Buckets
 {
@@ -45,10 +46,12 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Buckets
             if (!string.Equals(bucketKey, ComposerBucketKey, StringComparison.OrdinalIgnoreCase))
                 return liveCandidates; // every other bucket: no filtering, unchanged behavior
 
+            var attributeSet = ArtistCandidateAttributeSet.GetOrEmpty(context);
             var result = new List<Candidate>(liveCandidates.Count);
             foreach (var candidate in liveCandidates)
             {
-                if (!string.Equals(candidate.Type, GroupType, StringComparison.OrdinalIgnoreCase))
+                var attributes = attributeSet.Get(candidate);
+                if (!string.Equals(attributes.Type, GroupType, StringComparison.OrdinalIgnoreCase))
                 {
                     result.Add(candidate); // not a Group -- never filtered by this rule
                     continue;
@@ -56,8 +59,8 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Buckets
 
                 var linkedPerson = liveCandidates.FirstOrDefault(other =>
                     !ReferenceEquals(other, candidate) &&
-                    string.Equals(other.Type, PersonType, StringComparison.OrdinalIgnoreCase) &&
-                    candidate.GroupMembershipMbids.Contains(other.TargetId));
+                    string.Equals(attributeSet.Get(other).Type, PersonType, StringComparison.OrdinalIgnoreCase) &&
+                    attributes.GroupMembershipMbids.Contains(other.TargetId));
 
                 if (linkedPerson == null)
                 {

@@ -44,7 +44,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
         IReadOnlyList<string> GetArtistAliases(string artistMbid);
 
         // Artist-to-artist relationships (e.g. "is person"), used by the
-        // candidate generation strategy to populate Candidate.RelationshipMbids.
+        // candidate generation strategy to populate ArtistCandidateAttributeSet.
         // Distinct from GetRelationships, which is scoped to a recording.
         IReadOnlyList<MbArtistRelationship> GetArtistRelationships(string artistMbid);
     }

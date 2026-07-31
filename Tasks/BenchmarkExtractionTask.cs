@@ -124,12 +124,7 @@ namespace MetadataHealthCheck.v2.Tasks
         private const string ObservationsFileName = "MetadataHealthCheck.benchmark.observations.txt";
         private const string GroundTruthFileName = "MetadataHealthCheck.benchmark.groundtruth.csv";
 
-        // Nick's explicit spec: max 3 tracks TOTAL per artist for this benchmark
-        // dataset -- distinct from (and much smaller than) ArtistMusicBrainzConfig's real
-        // runtime BucketCeiling (3/4/6), which governs how many rounds the LIVE
-        // engine may sample before escalating tiers during actual resolution.
-        // This constant is purely about keeping the benchmark set small/focused
-        // on best-case data, not a claim about engine sampling behaviour.
+       
         private const int MaxTracksPerArtist = 3;
 
         private static readonly string[] BucketPriority = { "AlbumArtist", "Artist", "Composer" };
