@@ -14,13 +14,12 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
     // Every resolver follows the same five-stage recipe regardless of domain:
     //   1. Get the list of source entities to resolve       -- ISourceEntityProvider
     //   2. Guess candidates against the target system        -- Strategies
-    //   3. Gather evidence, a bit at a time                   -- the three
-    //      *EvidenceCollectors members below
+    //   3. Gather evidence, a bit at a time                   -- EvidenceCollectors
     //   4. Keep score as evidence comes in, stop early when   -- Scorer +
     //      confident                                            DecisionGate
-    //      (both driven by Core's SequentialSampler -- you never write this part)
+    //      (both driven by whatever Strategy you supply -- see below)
     //   5. Record the decision                                 -- IMatchRepository
-    //      (also entirely Core's job, not the resolver's)
+    //      (entirely Core's job, not the resolver's)
     //
     // TSourceEntity is your domain's "thing being resolved" (must implement
     // ISourceEntity). TConfig is your own tuning-config type -- Core only
@@ -41,30 +40,19 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         // do that in your own strategy if it matters for your domain).
         IEnumerable<ICandidateGenerationStrategy<TSourceEntity>> Strategies { get; }
 
-        // Stage 3, timing option A: called once per candidate, before any
-        // observation sampling starts, no observation unit involved at all.
-        // Use for anything computable from the candidate alone (e.g. name
-        // similarity). Empty array if you have none.
-        IEnumerable<ICandidateEvidenceCollector<TSourceEntity>> CandidateEvidenceCollectors { get; }
+        // Stage 3: every evidence collector this resolver has, of any shape.
+        // Each collector decides for itself when it has something to say --
+        // some only respond to the one no-unit call made before observation
+        // sampling starts (e.g. name similarity), others only respond to
+        // per-unit calls (e.g. a track/episode/whatever this resolver's
+        // observation units are). See IEvidenceCollector.
+        IEnumerable<IEvidenceCollector<TSourceEntity>> EvidenceCollectors { get; }
 
-        // Stage 3, timing option B: called once per (candidate, observation
-        // unit) pair, independently, as the sampler draws units. Use when
-        // each candidate needs its own separate lookup per unit. Empty array
-        // if your entity type has no per-unit evidence at all.
-        IEnumerable<IPerUnitEvidenceCollector<TSourceEntity>> PerUnitEvidenceCollectors { get; }
-
-        // Stage 3, timing option C: called once per observation unit, given
-        // ALL live candidates together, so one shared lookup can be checked
-        // against every candidate at once instead of repeating it per
-        // candidate. Empty array if you have no collectors of this shape.
-        IEnumerable<IJointCandidateEvidenceCollector<TSourceEntity>> JointCandidateEvidenceCollectors { get; }
-
-        // Supplies the observation units (stage 3's "one bit of evidence at a
-        // time" unit -- a track, a cast credit, whatever your domain's
-        // natural unit is), grouped into priority-ordered buckets. Null if
-        // your entity type has no observation/unit concept at all -- the
-        // sampler then scores stage-3-option-A evidence once and that's the
-        // final answer, with options B and C never invoked.
+        // Supplies the observation units (a track, a cast credit, whatever
+        // your domain's natural unit is), grouped into priority-ordered
+        // buckets. Null if your entity type has no observation/unit concept
+        // at all -- the sampler then scores whatever the no-unit call
+        // produced and that's the final answer.
         IObservationUnitProvider<TSourceEntity>? ObservationUnitProvider { get; }
 
         // Optional per-bucket candidate narrowing (e.g. dropping a candidate
@@ -85,7 +73,7 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         // MatchResult. Engine calls only this -- it has no idea whether this
         // is sequential sampling, a one-shot scorer, or anything else. A
         // resolver typically builds this from its own Scorer/DecisionGate/
-        // evidence collectors/ObservationUnitProvider above (e.g. by
+        // EvidenceCollectors/ObservationUnitProvider above (e.g. by
         // constructing a SequentialSampler), but Core never assumes that
         // shape. See Architecture-Layers.md.
         IResolutionStrategy<TSourceEntity, TConfig> Strategy { get; }

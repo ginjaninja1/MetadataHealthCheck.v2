@@ -25,7 +25,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
     /// performer credit, zero extra API calls) and stop the sampler before any
     /// decoy candidate's relationship-scan walk ever fires.
     /// </summary>
-    public class RecordingCorroborationEvidenceCollector : IJointCandidateEvidenceCollector<EmbyArtist>
+    public class RecordingCorroborationEvidenceCollector : IEvidenceCollector<EmbyArtist>
     {
         private readonly RecordingLookup _recordingLookup;
 
@@ -43,7 +43,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
             "CorroborationTier.Tier3",
         };
 
-        public IEnumerable<IReadOnlyDictionary<string, IReadOnlyList<EvidenceRecord>>> CollectRounds(EmbyArtist source, IReadOnlyList<Candidate> candidates, IObservationUnit unit, ResolutionContext context)
+        public IEnumerable<IReadOnlyDictionary<string, IReadOnlyList<EvidenceRecord>>> CollectRounds(EmbyArtist source, IReadOnlyList<Candidate> candidates, IObservationUnit? unit, ResolutionContext context)
         {
             if (unit is not EmbyTrackObservationUnit trackUnit) yield break;
             var track = trackUnit.Track;

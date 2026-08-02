@@ -22,9 +22,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
         public string TargetEntityType => "Artist";
 
         public IEnumerable<ICandidateGenerationStrategy<EmbyArtist>> Strategies { get; }
-        public IEnumerable<ICandidateEvidenceCollector<EmbyArtist>> CandidateEvidenceCollectors { get; }
-        public IEnumerable<IPerUnitEvidenceCollector<EmbyArtist>> PerUnitEvidenceCollectors { get; }
-        public IEnumerable<IJointCandidateEvidenceCollector<EmbyArtist>> JointCandidateEvidenceCollectors { get; }
+        public IEnumerable<IEvidenceCollector<EmbyArtist>> EvidenceCollectors { get; }
         public IObservationUnitProvider<EmbyArtist>? ObservationUnitProvider { get; }
         public IBucketCandidateFilter? BucketCandidateFilter { get; }
         public IBeliefScorer<ArtistMusicBrainzConfig> Scorer { get; }
@@ -44,15 +42,14 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
                 new ArtistCandidateStrategy(client, scoringConfig, logger),
             };
 
-            CandidateEvidenceCollectors = new ICandidateEvidenceCollector<EmbyArtist>[]
+            // NameDistanceEvidenceCollector only ever responds to the one
+            // no-unit call (static, candidate-pair-level evidence).
+            // RecordingCorroborationEvidenceCollector only ever responds to
+            // per-unit calls (needs a specific track). Each decides that for
+            // itself -- see IEvidenceCollector.
+            EvidenceCollectors = new IEvidenceCollector<EmbyArtist>[]
             {
                 new NameDistanceEvidenceCollector(client),
-            };
-
-            PerUnitEvidenceCollectors = Array.Empty<IPerUnitEvidenceCollector<EmbyArtist>>();
-
-            JointCandidateEvidenceCollectors = new IJointCandidateEvidenceCollector<EmbyArtist>[]
-            {
                 new RecordingCorroborationEvidenceCollector(recordingLookup),
             };
 
@@ -68,8 +65,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
             // IResolutionStrategy implementation instead -- Engine never sees
             // the difference. See Architecture-Layers.md.
             Strategy = new SequentialSampler<EmbyArtist, ArtistMusicBrainzConfig>(
-                PerUnitEvidenceCollectors,
-                JointCandidateEvidenceCollectors,
+                EvidenceCollectors,
                 ObservationUnitProvider,
                 BucketCandidateFilter,
                 Scorer,

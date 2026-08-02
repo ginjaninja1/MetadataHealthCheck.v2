@@ -15,7 +15,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
     /// resolver's own bucket/observation-unit vocabulary -- that's entirely
     /// IObservationUnitProvider's business. An entity type with no observation
     /// concept at all (ObservationUnitProvider == null) still gets a valid
-    /// result: static evidence is scored once and that's the final answer.
+    /// result: evidence collected with unit == null is scored once and that's
+    /// the final answer.
     ///
     /// This is one implementation of IResolutionStrategy -- the one a resolver
     /// chooses when sequential/adaptive sampling over observation units suits
@@ -26,8 +27,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
         where TSourceEntity : ISourceEntity
         where TConfig : IScoringConfig
     {
-        private readonly IEnumerable<IPerUnitEvidenceCollector<TSourceEntity>> _perUnitCollectors;
-        private readonly IEnumerable<IJointCandidateEvidenceCollector<TSourceEntity>> _jointCandidateCollectors;
+        private readonly IEnumerable<IEvidenceCollector<TSourceEntity>> _collectors;
         private readonly IObservationUnitProvider<TSourceEntity>? _unitProvider;
 
         // Optional, per-bucket candidate narrowing. Null means no filtering
@@ -38,16 +38,14 @@ namespace MetadataHealthCheck.v2.Core.Engine
         private readonly StructuredLogger _logger;
 
         public SequentialSampler(
-            IEnumerable<IPerUnitEvidenceCollector<TSourceEntity>> perUnitCollectors,
-            IEnumerable<IJointCandidateEvidenceCollector<TSourceEntity>> jointCandidateCollectors,
+            IEnumerable<IEvidenceCollector<TSourceEntity>> collectors,
             IObservationUnitProvider<TSourceEntity>? unitProvider,
             IBucketCandidateFilter? bucketCandidateFilter,
             IBeliefScorer<TConfig> scorer,
             IDecisionGate<TConfig> decisionGate,
             StructuredLogger logger)
         {
-            _perUnitCollectors = perUnitCollectors;
-            _jointCandidateCollectors = jointCandidateCollectors;
+            _collectors = collectors;
             _unitProvider = unitProvider;
             _bucketCandidateFilter = bucketCandidateFilter;
             _scorer = scorer;
@@ -59,11 +57,11 @@ namespace MetadataHealthCheck.v2.Core.Engine
         {
             var evidenceByCandidate = candidates.ToDictionary(c => c.Id, c => new List<EvidenceRecord>());
 
-            // candidatesById lets a round-based collector's per-round dictionary
-            // (keyed by Candidate.Id) resolve back to the actual Candidate for
-            // logging. nameCounts drives the "Name|MBID" vs bare "Name" choice in
-            // FormatCandidateLabel: only disambiguate with the target id when two
-            // live candidates actually share a display name.
+            // candidatesById lets a round's per-round dictionary (keyed by
+            // Candidate.Id) resolve back to the actual Candidate for logging.
+            // nameCounts drives the "Name|MBID" vs bare "Name" choice in
+            // FormatCandidateLabel: only disambiguate with the target id when
+            // two live candidates actually share a display name.
             var candidatesById = candidates.ToDictionary(c => c.Id);
             var nameCounts = candidates
                 .Select(c => string.IsNullOrEmpty(c.Name) ? c.TargetId : c.Name)
@@ -72,16 +70,25 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
             Banner($"BEGIN RESOLUTION: {source.DisplayName}");
 
-            // `decision` covers the case of zero observations ever being drawn
-            // (e.g. no buckets, or every bucket empty): scoring empty evidence
-            // yields a needs_review result, which is then returned as-is below.
+            // The one no-unit call: fires once, before any observation
+            // sampling starts, for any collector whose evidence needs no unit
+            // at all (e.g. name similarity). A collector that only cares
+            // about a specific observation unit yields nothing here.
+            foreach (var collector in _collectors)
+                foreach (var round in collector.CollectRounds(source, candidates, null, context))
+                    MergeRound(round, evidenceByCandidate, candidatesById, nameCounts, config, repository, bucketKey: null);
+
+            // Covers the case of zero observations ever being drawn (e.g. no
+            // buckets, or every bucket empty): scoring whatever the no-unit
+            // call produced yields a needs_review result, which is then
+            // returned as-is below.
             var decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
 
             // Per-observation sampling, bucket by bucket (highest signal first),
             // unit by unit within a bucket, stopping the instant any decision
             // threshold is crossed. BucketCeiling is a safety cap on grinding
             // through a low-signal bucket forever, not a target to reach.
-            if (_unitProvider != null && (_perUnitCollectors.Any() || _jointCandidateCollectors.Any()))
+            if (_unitProvider != null && _collectors.Any())
             {
                 foreach (var bucket in _unitProvider.GetOrderedBuckets(source, context))
                 {
@@ -101,59 +108,18 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         // running LLR from any other bucket stands as-is.
                         var bucketCandidates = _bucketCandidateFilter?.Filter(unit.BucketKey, candidates, context) ?? candidates;
 
-                        foreach (var candidate in bucketCandidates)
-                        {
-                            var candidateRecords = new List<EvidenceRecord>();
-                            foreach (var collector in _perUnitCollectors)
-                            {
-                                foreach (var record in collector.Collect(source, candidate, unit, context))
-                                {
-                                    if (record == null) continue;
-                                    evidenceByCandidate[candidate.Id].Add(record);
-                                    repository.SaveEvidence(record);
-                                    candidateRecords.Add(record);
-                                }
-                            }
-                            if (candidateRecords.Count == 0) continue;
-
-                            var contributing = candidateRecords.Where(r => r.Contributing).ToList();
-                            var opportunistic = candidateRecords.Where(r => !r.Contributing).ToList();
-
-                            foreach (var record in contributing)
-                                LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
-
-                            if (opportunistic.Count > 0)
-                            {
-                                _logger.Debug("Sampler", "  [{0}] ---- opportunistic evidence below (not scored, informational only) ----", FormatCandidateLabel(candidate, nameCounts));
-                                foreach (var record in opportunistic)
-                                    LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
-                                _logger.Debug("Sampler", "  [{0}] ---- end opportunistic evidence ----", FormatCandidateLabel(candidate, nameCounts));
-                            }
-                        }
-
-                        // Round-based collectors check ALL live candidates jointly per
+                        // Every collector checks ALL live candidates jointly per
                         // round, re-scoring and checking the decision gate after EVERY
-                        // round (not just once per whole observation): because these
+                        // round (not just once per whole observation): because
                         // collectors are yield-return-based, stopping here (break)
                         // means the next round's underlying lookup genuinely never
-                        // fires. See IJointCandidateEvidenceCollector.
+                        // fires. See IEvidenceCollector.
                         bool stoppedMidObservation = false;
-                        foreach (var collector in _jointCandidateCollectors)
+                        foreach (var collector in _collectors)
                         {
                             foreach (var round in collector.CollectRounds(source, bucketCandidates, unit, context))
                             {
-                                foreach (var roundKvp in round)
-                                {
-                                    var candidateId = roundKvp.Key;
-                                    var records = roundKvp.Value;
-                                    var roundCandidate = candidatesById[candidateId];
-                                    foreach (var record in records)
-                                    {
-                                        evidenceByCandidate[candidateId].Add(record);
-                                        repository.SaveEvidence(record);
-                                        LogEvidence(roundCandidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: unit.BucketKey);
-                                    }
-                                }
+                                MergeRound(round, evidenceByCandidate, candidatesById, nameCounts, config, repository, bucketKey: unit.BucketKey);
 
                                 decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
                                 if (decision.Status != "needs_review")
@@ -166,7 +132,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         }
 
                         // Unconditional recompute guards against a stale `decision`
-                        // from a prior observation when this observation's round-based
+                        // from a prior observation when this observation's
                         // collectors produced zero rounds. Harmless/idempotent when
                         // stoppedMidObservation is already true.
                         decision = ScoreAndDecide(source, candidates, evidenceByCandidate, config);
@@ -185,6 +151,28 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
             _logger.Debug("Sampler", "{0}: exhausted all bucket budgets without crossing any accept/reject threshold.", source.DisplayName);
             return decision;
+        }
+
+        private void MergeRound(
+            IReadOnlyDictionary<string, IReadOnlyList<EvidenceRecord>> round,
+            Dictionary<string, List<EvidenceRecord>> evidenceByCandidate,
+            Dictionary<string, Candidate> candidatesById,
+            Dictionary<string, int> nameCounts,
+            TConfig config,
+            IMatchRepository repository,
+            string? bucketKey)
+        {
+            foreach (var kvp in round)
+            {
+                var candidateId = kvp.Key;
+                var candidate = candidatesById[candidateId];
+                foreach (var record in kvp.Value)
+                {
+                    evidenceByCandidate[candidateId].Add(record);
+                    repository.SaveEvidence(record);
+                    LogEvidence(candidate, nameCounts, record, config, prefix: "", indent: "  ", bucketKey: bucketKey);
+                }
+            }
         }
 
         private void Banner(string label)
