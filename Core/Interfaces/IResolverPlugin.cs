@@ -80,5 +80,14 @@ namespace MetadataHealthCheck.v2.Core.Interfaces
         // meaningful null case.
         IBeliefScorer<TConfig> Scorer { get; }
         IDecisionGate<TConfig> DecisionGate { get; }
+
+        // The resolver's own chosen procedure for turning candidates into a
+        // MatchResult. Engine calls only this -- it has no idea whether this
+        // is sequential sampling, a one-shot scorer, or anything else. A
+        // resolver typically builds this from its own Scorer/DecisionGate/
+        // evidence collectors/ObservationUnitProvider above (e.g. by
+        // constructing a SequentialSampler), but Core never assumes that
+        // shape. See Architecture-Layers.md.
+        IResolutionStrategy<TSourceEntity, TConfig> Strategy { get; }
     }
 }

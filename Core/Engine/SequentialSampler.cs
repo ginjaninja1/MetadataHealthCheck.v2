@@ -16,8 +16,13 @@ namespace MetadataHealthCheck.v2.Core.Engine
     /// IObservationUnitProvider's business. An entity type with no observation
     /// concept at all (ObservationUnitProvider == null) still gets a valid
     /// result: static evidence is scored once and that's the final answer.
+    ///
+    /// This is one implementation of IResolutionStrategy -- the one a resolver
+    /// chooses when sequential/adaptive sampling over observation units suits
+    /// its domain. Engine depends only on IResolutionStrategy, never on this
+    /// class directly. See Architecture-Layers.md.
     /// </summary>
-    public class SequentialSampler<TSourceEntity, TConfig>
+    public class SequentialSampler<TSourceEntity, TConfig> : IResolutionStrategy<TSourceEntity, TConfig>
         where TSourceEntity : ISourceEntity
         where TConfig : IScoringConfig
     {

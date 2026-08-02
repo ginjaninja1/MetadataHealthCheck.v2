@@ -1,3 +1,4 @@
+using MetadataHealthCheck.v2.Core.Engine;
 using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Diagnostics;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Buckets;
@@ -28,6 +29,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
         public IBucketCandidateFilter? BucketCandidateFilter { get; }
         public IBeliefScorer<ArtistMusicBrainzConfig> Scorer { get; }
         public IDecisionGate<ArtistMusicBrainzConfig> DecisionGate { get; }
+        public IResolutionStrategy<EmbyArtist, ArtistMusicBrainzConfig> Strategy { get; }
 
         public MusicBrainzArtistResolverPlugin(IMusicBrainzApiClient client, ArtistMusicBrainzConfig scoringConfig, StructuredLogger? logger = null)
         {
@@ -59,6 +61,20 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
 
             Scorer = new SimpleWeightedSumScorer();
             DecisionGate = new ThresholdDecisionGate();
+
+            // This resolver's own choice of resolution procedure: sequential
+            // sampling with early stopping. A future resolver with no
+            // observation-unit concept is free to supply a different
+            // IResolutionStrategy implementation instead -- Engine never sees
+            // the difference. See Architecture-Layers.md.
+            Strategy = new SequentialSampler<EmbyArtist, ArtistMusicBrainzConfig>(
+                PerUnitEvidenceCollectors,
+                JointCandidateEvidenceCollectors,
+                ObservationUnitProvider,
+                BucketCandidateFilter,
+                Scorer,
+                DecisionGate,
+                logger);
         }
     }
 }

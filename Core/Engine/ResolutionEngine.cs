@@ -6,10 +6,12 @@ namespace MetadataHealthCheck.v2.Core.Engine
 {
     /// <summary>
     /// Top-level resolution pipeline: identity cache check, candidate generation
-    /// (strategies in priority order), sequential sampling (adaptive, early-
-    /// stopping evidence collection and scoring), then repository writes. Generic
-    /// over both the source entity type and the resolver's own config type, so
-    /// Core never references a specific resolver.
+    /// (strategies in priority order), delegation to the resolver's own
+    /// IResolutionStrategy, then repository writes. Generic over both the
+    /// source entity type and the resolver's own config type, so Core never
+    /// references a specific resolver -- and has no knowledge of how the
+    /// resolver's strategy works internally (sequential sampling, one-shot
+    /// scoring, or anything else). See Architecture-Layers.md.
     /// </summary>
     public class ResolutionEngine<TSourceEntity, TConfig>
         where TSourceEntity : ISourceEntity
@@ -54,16 +56,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
             foreach (var candidate in candidates)
                 _repository.SaveCandidate(candidate);
 
-            var sampler = new SequentialSampler<TSourceEntity, TConfig>(
-                _plugin.PerUnitEvidenceCollectors,
-                _plugin.JointCandidateEvidenceCollectors,
-                _plugin.ObservationUnitProvider,
-                _plugin.BucketCandidateFilter,
-                _plugin.Scorer,
-                _plugin.DecisionGate,
-                _logger);
-
-            var decision = sampler.Resolve(source, candidates, _scoringConfig, _repository, context);
+            var decision = _plugin.Strategy.Resolve(source, candidates, _scoringConfig, _repository, context);
 
             // Give any resolver-set ForcedReviewSignal the final say over the
             // decision gate's own output, checked before the auto-accept
