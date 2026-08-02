@@ -21,8 +21,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
         where TSourceEntity : ISourceEntity
         where TConfig : IScoringConfig
     {
-        private readonly IEnumerable<IObservationEvidenceCollector<TSourceEntity>> _observationCollectors;
-        private readonly IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> _roundBasedCollectors;
+        private readonly IEnumerable<IPerUnitEvidenceCollector<TSourceEntity>> _perUnitCollectors;
+        private readonly IEnumerable<IJointCandidateEvidenceCollector<TSourceEntity>> _jointCandidateCollectors;
         private readonly IObservationUnitProvider<TSourceEntity>? _unitProvider;
 
         // Optional, per-bucket candidate narrowing. Null means no filtering
@@ -33,16 +33,16 @@ namespace MetadataHealthCheck.v2.Core.Engine
         private readonly StructuredLogger _logger;
 
         public SequentialSampler(
-            IEnumerable<IObservationEvidenceCollector<TSourceEntity>> observationCollectors,
-            IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedCollectors,
+            IEnumerable<IPerUnitEvidenceCollector<TSourceEntity>> perUnitCollectors,
+            IEnumerable<IJointCandidateEvidenceCollector<TSourceEntity>> jointCandidateCollectors,
             IObservationUnitProvider<TSourceEntity>? unitProvider,
             IBucketCandidateFilter? bucketCandidateFilter,
             IBeliefScorer<TConfig> scorer,
             IDecisionGate<TConfig> decisionGate,
             StructuredLogger logger)
         {
-            _observationCollectors = observationCollectors;
-            _roundBasedCollectors = roundBasedCollectors;
+            _perUnitCollectors = perUnitCollectors;
+            _jointCandidateCollectors = jointCandidateCollectors;
             _unitProvider = unitProvider;
             _bucketCandidateFilter = bucketCandidateFilter;
             _scorer = scorer;
@@ -76,7 +76,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
             // unit by unit within a bucket, stopping the instant any decision
             // threshold is crossed. BucketCeiling is a safety cap on grinding
             // through a low-signal bucket forever, not a target to reach.
-            if (_unitProvider != null && (_observationCollectors.Any() || _roundBasedCollectors.Any()))
+            if (_unitProvider != null && (_perUnitCollectors.Any() || _jointCandidateCollectors.Any()))
             {
                 foreach (var bucket in _unitProvider.GetOrderedBuckets(source, context))
                 {
@@ -99,7 +99,7 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         foreach (var candidate in bucketCandidates)
                         {
                             var candidateRecords = new List<EvidenceRecord>();
-                            foreach (var collector in _observationCollectors)
+                            foreach (var collector in _perUnitCollectors)
                             {
                                 foreach (var record in collector.Collect(source, candidate, unit, context))
                                 {
@@ -131,9 +131,9 @@ namespace MetadataHealthCheck.v2.Core.Engine
                         // round (not just once per whole observation): because these
                         // collectors are yield-return-based, stopping here (break)
                         // means the next round's underlying lookup genuinely never
-                        // fires. See IRoundBasedObservationEvidenceCollector.
+                        // fires. See IJointCandidateEvidenceCollector.
                         bool stoppedMidObservation = false;
-                        foreach (var collector in _roundBasedCollectors)
+                        foreach (var collector in _jointCandidateCollectors)
                         {
                             foreach (var round in collector.CollectRounds(source, bucketCandidates, unit, context))
                             {

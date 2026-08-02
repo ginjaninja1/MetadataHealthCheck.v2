@@ -17,7 +17,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
     /// candidate exists at all, so this must not also silently add to the score
     /// on top of that.
     /// </summary>
-    public class NameDistanceEvidenceCollector : IEvidenceCollector<EmbyArtist>
+    public class NameDistanceEvidenceCollector : ICandidateEvidenceCollector<EmbyArtist>
     {
         private readonly IMusicBrainzApiClient _client;
 
@@ -46,7 +46,6 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
                 CandidateId = candidate.Id,
                 EvidenceType = bucket,
                 RawValue = $"source=\"{source.DisplayName}\" candidate=\"{candidateName}\" similarity={distance:F2}",
-                Role = null, // static evidence, not tied to a specific track/role
                 Contributing = false,
                 Rationale = $"MusicBrainz artist name \"{candidateName}\" compared to Emby's \"{source.DisplayName}\" ({DescribeBucket(bucket)}).",
             };

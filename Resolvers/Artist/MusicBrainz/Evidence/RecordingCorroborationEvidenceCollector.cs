@@ -25,7 +25,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
     /// performer credit, zero extra API calls) and stop the sampler before any
     /// decoy candidate's relationship-scan walk ever fires.
     /// </summary>
-    public class RecordingCorroborationEvidenceCollector : IRoundBasedObservationEvidenceCollector<EmbyArtist>
+    public class RecordingCorroborationEvidenceCollector : IJointCandidateEvidenceCollector<EmbyArtist>
     {
         private readonly RecordingLookup _recordingLookup;
 
@@ -144,7 +144,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence
                 confirmationNote = " -- confirmed via performer-credit";
             }
 
-            return new EvidenceRecord
+            return new MusicBrainzEvidenceRecord
             {
                 CandidateId = candidate.Id,
                 EvidenceType = tier,

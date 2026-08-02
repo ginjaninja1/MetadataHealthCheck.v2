@@ -55,8 +55,8 @@ namespace MetadataHealthCheck.v2.Core.Engine
                 _repository.SaveCandidate(candidate);
 
             var sampler = new SequentialSampler<TSourceEntity, TConfig>(
-                _plugin.ObservationEvidenceCollectors,
-                _plugin.RoundBasedObservationEvidenceCollectors,
+                _plugin.PerUnitEvidenceCollectors,
+                _plugin.JointCandidateEvidenceCollectors,
                 _plugin.ObservationUnitProvider,
                 _plugin.BucketCandidateFilter,
                 _plugin.Scorer,
@@ -65,17 +65,19 @@ namespace MetadataHealthCheck.v2.Core.Engine
 
             var decision = sampler.Resolve(source, candidates, _scoringConfig, _repository, context);
 
-            // A candidate identity fold is a probationary rule: any fold forces
-            // needs_review regardless of what the LLR/margin math produced, checked
-            // before the auto-accept identity-cache write below so a folded
-            // auto-accept is never cached as confirmed.
-            if (context.CandidateFoldOccurred && decision.Status != "needs_review")
+            // Give any resolver-set ForcedReviewSignal the final say over the
+            // decision gate's own output, checked before the auto-accept
+            // identity-cache write below so a forced review is never cached as
+            // confirmed. Core has no idea what triggered it (that's entirely
+            // the resolver's business) -- it only knows the mechanism.
+            var forcedReview = context.GetExtension<ForcedReviewSignal>();
+            if (forcedReview != null && decision.Status != "needs_review")
             {
                 _logger.Info("Engine",
-                    "Overriding decision status '{0}' -> 'needs_review' for {1}: candidate fold occurred this run. {2}",
-                    decision.Status, source.DisplayName, string.Join(" ", context.FoldNotes));
+                    "Overriding decision status '{0}' -> 'needs_review' for {1}: {2}. {3}",
+                    decision.Status, source.DisplayName, forcedReview.Reason, string.Join(" ", forcedReview.Notes));
                 decision.Status = "needs_review";
-                decision.DecisionReason = "forced_needs_review_candidate_fold";
+                decision.DecisionReason = forcedReview.Reason;
             }
 
             _repository.SaveMatchResult(decision);

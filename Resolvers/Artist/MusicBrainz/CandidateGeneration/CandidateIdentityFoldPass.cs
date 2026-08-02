@@ -12,10 +12,11 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
     /// left alone -- neither survives on stronger grounds than the other.
     ///
     /// A candidate identity fold is a probationary rule, not yet validated
-    /// against real volume: any fold recorded here is picked up by
-    /// ResolutionEngine, which forces the run's final decision to
+    /// against real volume: any fold recorded here sets a ForcedReviewSignal
+    /// on the context (Core's generic mechanism -- see that type), which
+    /// ResolutionEngine picks up and forces the run's final decision to
     /// needs_review regardless of what the LLR/margin math would otherwise
-    /// produce, via ResolutionContext.CandidateFoldOccurred.
+    /// produce.
     /// </summary>
     internal class CandidateIdentityFoldPass
     {
@@ -30,6 +31,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
             ResolutionContext context)
         {
             var folded = new bool[candidates.Count];
+            var foldNotes = new List<string>();
             for (int i = 0; i < candidates.Count; i++)
             {
                 if (folded[i]) continue;
@@ -63,12 +65,15 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.CandidateGeneratio
                         candidates[droppedIdx].TargetId, candidates[droppedIdx].Name, tiers[droppedIdx],
                         candidates[survivorIdx].TargetId, candidates[survivorIdx].Name, tiers[survivorIdx]);
                     _logger?.Info("ArtistCandidateGen", "  {0}", note);
-                    context.CandidateFoldOccurred = true;
-                    context.FoldNotes.Add(note);
+                    foldNotes.Add(note);
 
                     if (droppedIdx == i) break; // i itself was dropped -- stop comparing it against later j's
                 }
             }
+
+            if (foldNotes.Count > 0)
+                context.SetExtension(new ForcedReviewSignal("forced_needs_review_candidate_fold", foldNotes));
+
             return folded;
         }
     }

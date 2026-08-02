@@ -21,9 +21,9 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
         public string TargetEntityType => "Artist";
 
         public IEnumerable<ICandidateGenerationStrategy<EmbyArtist>> Strategies { get; }
-        public IEnumerable<IEvidenceCollector<EmbyArtist>> EvidenceCollectors { get; }
-        public IEnumerable<IObservationEvidenceCollector<EmbyArtist>> ObservationEvidenceCollectors { get; }
-        public IEnumerable<IRoundBasedObservationEvidenceCollector<EmbyArtist>> RoundBasedObservationEvidenceCollectors { get; }
+        public IEnumerable<ICandidateEvidenceCollector<EmbyArtist>> CandidateEvidenceCollectors { get; }
+        public IEnumerable<IPerUnitEvidenceCollector<EmbyArtist>> PerUnitEvidenceCollectors { get; }
+        public IEnumerable<IJointCandidateEvidenceCollector<EmbyArtist>> JointCandidateEvidenceCollectors { get; }
         public IObservationUnitProvider<EmbyArtist>? ObservationUnitProvider { get; }
         public IBucketCandidateFilter? BucketCandidateFilter { get; }
         public IBeliefScorer<ArtistMusicBrainzConfig> Scorer { get; }
@@ -42,14 +42,14 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz
                 new ArtistCandidateStrategy(client, scoringConfig, logger),
             };
 
-            EvidenceCollectors = new IEvidenceCollector<EmbyArtist>[]
+            CandidateEvidenceCollectors = new ICandidateEvidenceCollector<EmbyArtist>[]
             {
                 new NameDistanceEvidenceCollector(client),
             };
 
-            ObservationEvidenceCollectors = Array.Empty<IObservationEvidenceCollector<EmbyArtist>>();
+            PerUnitEvidenceCollectors = Array.Empty<IPerUnitEvidenceCollector<EmbyArtist>>();
 
-            RoundBasedObservationEvidenceCollectors = new IRoundBasedObservationEvidenceCollector<EmbyArtist>[]
+            JointCandidateEvidenceCollectors = new IJointCandidateEvidenceCollector<EmbyArtist>[]
             {
                 new RecordingCorroborationEvidenceCollector(recordingLookup),
             };

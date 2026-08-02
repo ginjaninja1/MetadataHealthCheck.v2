@@ -23,9 +23,9 @@ namespace MetadataHealthCheck.v2.Core.Validation
         // matching weight entry -- the inverse failure mode: a collector could
         // start emitting a new or renamed type before a weight exists for it.
         public static IReadOnlyList<Finding> Validate<TSourceEntity>(
-            IEnumerable<IEvidenceCollector<TSourceEntity>> evidenceCollectors,
-            IEnumerable<IObservationEvidenceCollector<TSourceEntity>> observationEvidenceCollectors,
-            IEnumerable<IRoundBasedObservationEvidenceCollector<TSourceEntity>> roundBasedObservationEvidenceCollectors,
+            IEnumerable<ICandidateEvidenceCollector<TSourceEntity>> evidenceCollectors,
+            IEnumerable<IPerUnitEvidenceCollector<TSourceEntity>> observationEvidenceCollectors,
+            IEnumerable<IJointCandidateEvidenceCollector<TSourceEntity>> roundBasedObservationEvidenceCollectors,
             IReadOnlyDictionary<string, double> evidenceWeights)
             where TSourceEntity : ISourceEntity
         {

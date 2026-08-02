@@ -50,7 +50,7 @@ var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboar
 var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfig, logger);
 
 Banner("STAGE: evidence/weight consistency check");
-var configFindings = EvidenceConfigValidator.Validate(plugin.EvidenceCollectors, plugin.ObservationEvidenceCollectors, plugin.RoundBasedObservationEvidenceCollectors, scoringConfig.EvidenceWeights);
+var configFindings = EvidenceConfigValidator.Validate(plugin.CandidateEvidenceCollectors, plugin.PerUnitEvidenceCollectors, plugin.JointCandidateEvidenceCollectors, scoringConfig.EvidenceWeights);
 if (configFindings.Count == 0)
 {
     Console.WriteLine("No issues found: every ArtistMusicBrainzConfig.EvidenceWeights entry is declared by some registered collector, and every declared weighted evidence type has a matching weight entry.\n");
@@ -101,14 +101,14 @@ foreach (var artist in artists)
     var repo = new InMemoryMatchRepository();
     var engine = new ResolutionEngine<EmbyArtist, ArtistMusicBrainzConfig>(plugin, repo, identityCache, scoringConfig, logger);
 
-    // Per-artist context: CandidateFoldOccurred/FoldNotes must start fresh for
-    // EVERY artist -- see ResolutionContext's own field comments. Reusing the
-    // outer `context` across this loop's iterations was a real bug: one
-    // artist's genuine fold permanently poisoned CandidateFoldOccurred=true for
-    // every artist processed afterward in this run, forcing needs_review on
-    // all of them regardless of their own evidence. RunId/CancellationToken/
-    // Progress are genuinely batch-level, so still carried over from the
-    // shared outer context.
+    // Per-artist context: any ForcedReviewSignal a resolver sets (e.g. a
+    // candidate fold) must start fresh for EVERY artist -- see
+    // ResolutionContext's own extension-slot comment. Reusing the outer
+    // `context` across this loop's iterations was a real bug: one artist's
+    // genuine fold permanently poisoned every artist processed afterward in
+    // this run, forcing needs_review on all of them regardless of their own
+    // evidence. RunId/CancellationToken/Progress are genuinely batch-level, so
+    // still carried over from the shared outer context.
     var artistContext = new ResolutionContext
     {
         RunId = context.RunId,

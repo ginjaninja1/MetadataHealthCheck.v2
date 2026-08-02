@@ -13,6 +13,7 @@ using MetadataHealthCheck.v2.Diagnostics;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
@@ -113,8 +114,9 @@ await Parallel.ForEachAsync(
             var repo = new InMemoryMatchRepository();
             var engine = new ResolutionEngine<EmbyArtist, ArtistMusicBrainzConfig>(plugin, repo, identityCache, scoringConfig, logger);
 
-            // Per-artist context: CandidateFoldOccurred/FoldNotes must start fresh for
-            // EVERY artist -- see ResolutionContext's own field comments. RunId/
+            // Per-artist context: any ForcedReviewSignal a resolver sets (e.g. a
+            // candidate fold) must start fresh for EVERY artist -- see
+            // ResolutionContext's own extension-slot comment. RunId/
             // CancellationToken/Progress are genuinely batch-level, so carried over
             // from the shared outer `context` rather than re-generated per artist.
             var artistContext = new ResolutionContext
@@ -213,7 +215,8 @@ static Dictionary<string, int> BuildEvidenceCountsByKey(IReadOnlyList<EvidenceRe
         .Where(e => e.Contributing)
         .GroupBy(e =>
         {
-            var role = string.IsNullOrEmpty(e.Role) ? "NoBucket" : e.Role;
+            var mb = e as MusicBrainzEvidenceRecord;
+            var role = string.IsNullOrEmpty(mb?.Role) ? "NoBucket" : mb.Role;
             // MatchedViaRelationship is only ever meaningfully set by
             // RecordingCorroborationEvidenceCollector (CorroborationTier.*) -- for
             // every other evidence type it's just the unset default (false), so
@@ -222,7 +225,7 @@ static Dictionary<string, int> BuildEvidenceCountsByKey(IReadOnlyList<EvidenceRe
             if (!e.EvidenceType.StartsWith("CorroborationTier", StringComparison.OrdinalIgnoreCase))
                 return $"{role}.{e.EvidenceType}";
             var via = e.MatchedViaRelationship ? "ViaRelationship" : "ViaPerformer";
-            var rung = string.IsNullOrEmpty(e.Rung) ? "NoRung" : e.Rung;
+            var rung = string.IsNullOrEmpty(mb?.Rung) ? "NoRung" : mb.Rung;
             return $"{role}.{e.EvidenceType}.{rung}.{via}";
         }, StringComparer.OrdinalIgnoreCase)
         .ToDictionary(g => g.Key, g => g.Count(), StringComparer.OrdinalIgnoreCase);

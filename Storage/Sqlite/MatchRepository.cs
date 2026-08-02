@@ -78,6 +78,17 @@ namespace MetadataHealthCheck.v2.Storage.Sqlite
 
         public void SaveEvidence(EvidenceRecord evidence)
         {
+            // KNOWN LEAK, flagged not silently fixed: role/source_track_id/
+            // album_id/relationship_type are MusicBrainz-artist-resolver-shaped
+            // columns on a table meant to serve every resolver. Reading them
+            // via the concrete MusicBrainzEvidenceRecord subtype here means
+            // Storage (generic infra) now depends on one specific resolver's
+            // type -- backwards layering, tolerated for now because this is a
+            // single-assembly plugin, but worth revisiting (e.g. a generic
+            // key/value evidence-detail table) once a second resolver exists
+            // and needs its own detail columns.
+            var mb = evidence as Resolvers.Artist.MusicBrainz.Evidence.MusicBrainzEvidenceRecord;
+
             using var connection = CreateConnection();
             connection.RunInTransaction(db =>
             {
@@ -87,10 +98,10 @@ namespace MetadataHealthCheck.v2.Storage.Sqlite
                 statement.TryBind("@CandidateId", evidence.CandidateId);
                 statement.TryBind("@EvidenceType", evidence.EvidenceType);
                 statement.TryBind("@RawValue", evidence.RawValue);
-                statement.TryBind("@Role", evidence.Role);
-                statement.TryBind("@SourceTrackId", evidence.SourceTrackId);
-                statement.TryBind("@AlbumId", evidence.AlbumId);
-                statement.TryBind("@RelationshipType", evidence.RelationshipType);
+                statement.TryBind("@Role", mb?.Role);
+                statement.TryBind("@SourceTrackId", mb?.SourceTrackId);
+                statement.TryBind("@AlbumId", mb?.AlbumId);
+                statement.TryBind("@RelationshipType", mb?.RelationshipType);
                 statement.TryBind("@Rationale", evidence.Rationale);
                 statement.MoveNext();
             }, TransactionMode);

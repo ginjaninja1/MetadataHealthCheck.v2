@@ -1,6 +1,7 @@
 using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Core.Model;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Evidence;
 
 namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring
 {
@@ -25,7 +26,8 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring
                 if (e.EvidenceType.StartsWith("CorroborationTier."))
                     llr *= e.MatchedViaAlias ? config.AliasMatchWeight : config.NameMatchWeight;
 
-                double weight = (e.Role != null && config.RoleWeights.TryGetValue(e.Role, out var w)) ? w : 1.0;
+                var role = (e as MusicBrainzEvidenceRecord)?.Role;
+                double weight = (role != null && config.RoleWeights.TryGetValue(role, out var w)) ? w : 1.0;
                 runningLlr += llr * weight;
             }
 
