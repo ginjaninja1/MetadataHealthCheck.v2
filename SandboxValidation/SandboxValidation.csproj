@@ -2,10 +2,12 @@
 
   <!--
     SANDBOX-ONLY. Compiles the exact same source tree as
-    ../MetadataHealthCheck.v2 (which targets netstandard2.0 with real
-    mediabrowser.server.core / SQLitePCL.pretty.core NuGet packages) against
-    net8.0 + the local SQLitePCLPrettyShim, since nuget.org is unreachable in
-    this build sandbox. Not part of the shipped plugin. See Project Log.
+    ../MetadataHealthCheck.v2 (which targets netstandard2.0 with the real
+    mediabrowser.server.core NuGet package plus Emby's own private
+    SQLitePCL.pretty.dll/SQLitePCLRawEx.core.dll via HintPath) against net8.0
+    + the local SQLitePCLPrettyShim, since this build sandbox has neither
+    nuget.org access nor a real Emby-Server install to point a HintPath at.
+    Not part of the shipped plugin. See Project Log.
   -->
   <PropertyGroup>
     <TargetFramework>net8.0</TargetFramework>

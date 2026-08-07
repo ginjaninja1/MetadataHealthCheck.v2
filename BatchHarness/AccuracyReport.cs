@@ -30,6 +30,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
         public double Llr { get; set; }
         public double Margin { get; set; }
         public int ApiCalls { get; set; }
+        public int CacheHits { get; set; }
         public long ElapsedMs { get; set; }
         public string? Error { get; set; }                   // set if this artist's resolution threw
 
@@ -85,7 +86,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
                 .OrderBy(k => k, StringComparer.OrdinalIgnoreCase)
                 .ToList();
 
-            var header = "ArtistName,SourceId,ExpectedMbid,ExpectedUrl,ChosenMbid,ChosenUrl,Decision,DecisionReason,Correct,Confidence,Llr,Margin,ApiCalls,ElapsedMs,Error"
+            var header = "ArtistName,SourceId,ExpectedMbid,ExpectedUrl,ChosenMbid,ChosenUrl,Decision,DecisionReason,Correct,Confidence,Llr,Margin,ApiCalls,CacheHits,ElapsedMs,Error"
                 + (evidenceKeys.Count > 0 ? "," + string.Join(",", evidenceKeys.Select(CsvEscape)) : "");
             var lines = new List<string> { header };
 
@@ -106,6 +107,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
                     r.Llr.ToString("F4", CultureInfo.InvariantCulture),
                     r.Margin.ToString("F4", CultureInfo.InvariantCulture),
                     r.ApiCalls.ToString(CultureInfo.InvariantCulture),
+                    r.CacheHits.ToString(CultureInfo.InvariantCulture),
                     r.ElapsedMs.ToString(CultureInfo.InvariantCulture),
                     CsvEscape(r.Error ?? ""),
                 };
@@ -185,6 +187,7 @@ namespace MetadataHealthCheck.v2.BatchHarness
             if (scored.Count > 0)
             {
                 Console.WriteLine($"  Avg API calls/artist : {scored.Average(r => r.ApiCalls):F2}");
+                Console.WriteLine($"  Avg cache hits/artist: {scored.Average(r => r.CacheHits):F2}");
                 Console.WriteLine($"  Avg elapsed ms/artist: {scored.Average(r => r.ElapsedMs):F0}");
                 foreach (var g in scored.GroupBy(r => r.Decision, StringComparer.OrdinalIgnoreCase).OrderByDescending(g => g.Count()))
                 {

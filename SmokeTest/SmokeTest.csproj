@@ -4,6 +4,42 @@
 		<ProjectReference Include="..\MetadataHealthCheck.v2.csproj" />
 	</ItemGroup>
 
+	<!--
+    MetadataHealthCheck.v2.csproj now references Emby's own private
+    SQLitePCL.pretty.dll / SQLitePCLRawEx.core.dll (HintPath, see that
+    project's comment for why) instead of the public SQLitePCL.pretty.core /
+    SQLitePCLRaw.bundle_e_sqlite3 NuGet packages this project used to add on
+    top of it. This project gets those same private DLLs transitively via the
+    ProjectReference above - no package or Batteries_V2.Init() call needed
+    here, matching Emby.AutoOrganize/Emby.Sqlite, which never call it either.
+  -->
+
+	<!--
+    SQLite3Provider_sqlite3 (the class that actually implements
+    ISQLite3Provider and P/Invokes into sqlite3.dll) lives inside
+    EmbyServer.dll itself, not any of the SQLitePCL*-named DLLs - confirmed via
+    ILSpy against the real EmbyServer.Program.Main, which calls
+    raw.SetProvider(new SQLite3Provider_sqlite3()) once at startup before
+    anything else touches SQLite. Referenced here so this standalone console
+    harness can do the same thing the real host does for every plugin for
+    free.
+  -->
+	<ItemGroup>
+		<Reference Include="EmbyServer">
+			<HintPath>C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\EmbyServer.dll</HintPath>
+		</Reference>
+		<!--
+      Same transitive-reference gotcha as EmbyServer above: this project's own
+      Program.cs calls SQLitePCLEx.raw.SetProvider(...) directly, so it needs
+      its own reference to SQLitePCLRawEx.core.dll - getting it only via
+      MetadataHealthCheck.v2.csproj's ProjectReference isn't enough for a type
+      to be nameable in THIS project's own source.
+    -->
+		<Reference Include="SQLitePCLRawEx.core">
+			<HintPath>C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\SQLitePCLRawEx.core.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
 	<ItemGroup>
 		<None Include="observations.txt">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

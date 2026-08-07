@@ -18,6 +18,12 @@ using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
+using SQLitePCLEx;
+
+// Own Main/process from SmokeTest's, so needs its own SetProvider call --
+// see SmokeTest/Program.cs's comment for what this is and why it's needed
+// here but not inside a real Emby plugin.
+raw.SetProvider(new SQLite3Provider_sqlite3());
 
 // Headless batch runner: same real engine, real ArtistMusicBrainzConfig, and real
 // HttpMusicBrainzApiClient as SmokeTest, but with no per-artist pause and
@@ -89,6 +95,16 @@ Console.WriteLine($"Loaded {artists.Count} artist(s) from {observationsPath}.");
 Console.WriteLine($"Running with max concurrency = {maxConcurrency}.\n");
 
 var scoringConfig = new ArtistMusicBrainzConfig(); // shared: read-only, safe across workers -- see header note
+
+// UNLIKE mbClient/identityCache below (deliberately one-per-worker, see header
+// note on their unlocked internal Dictionaries), the API response cache is
+// ONE shared instance across every worker: BaseSqliteRepository's own
+// ReaderWriterLockSlim is what makes concurrent access from many threads
+// against one apicache.sqlite file safe, and sharing it is also the whole
+// point -- worker A's cached fetch should be visible to worker B, not siloed
+// per-thread like the identity cache intentionally is.
+var apiCache = new MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository("apicache.sqlite", new StructuredLogger(writeToConsole: false));
+
 var rows = new System.Collections.Concurrent.ConcurrentBag<BatchResultRow>();
 var overallStopwatch = Stopwatch.StartNew();
 var completed = 0;
@@ -107,7 +123,7 @@ await Parallel.ForEachAsync(
             ExpectedMbid = groundTruth.TryGetValue(artist.SourceId, out var expected) ? expected : "",
         };
 
-        var (logger, mbClient, identityCache, plugin) = BuildStack();
+        var (logger, mbClient, identityCache, plugin) = BuildStack(apiCache);
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -144,6 +160,7 @@ await Parallel.ForEachAsync(
             stopwatch.Stop();
             row.ElapsedMs = stopwatch.ElapsedMilliseconds;
             row.ApiCalls = mbClient.TotalApiCalls;
+            row.CacheHits = mbClient.TotalCacheHits;
             mbClient.Dispose();
         }
 
@@ -187,13 +204,16 @@ return 0;
 
 // ---------------------------------------------------------------------------
 
-static (StructuredLogger logger, HttpMusicBrainzApiClient mbClient, InMemoryIdentityCache identityCache, MusicBrainzArtistResolverPlugin plugin) BuildStack()
+static (StructuredLogger logger, HttpMusicBrainzApiClient mbClient, InMemoryIdentityCache identityCache, MusicBrainzArtistResolverPlugin plugin) BuildStack(
+    MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository apiCache)
 {
     // Fresh logger too, not just for thread safety -- StructuredLogger.Lines is
     // also a plain, unlocked List<string> (confirmed by reading Diagnostics/
     // StructuredLogger.cs), same category of problem as the two caches above.
+    // apiCache itself is the one exception to "fresh per worker" -- see the
+    // shared-instance note where it's constructed above.
     var logger = new StructuredLogger(writeToConsole: false); // suppress per-artist console spam; keeps Lines buffer for on-error inspection
-    var mbClient = new HttpMusicBrainzApiClient(logger);
+    var mbClient = new HttpMusicBrainzApiClient(apiCache, logger);
     var identityCache = new InMemoryIdentityCache();
     var scoringConfigForPlugin = new ArtistMusicBrainzConfig(); // plugin ctor requires one; shared config values are identical to the outer one
     var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfigForPlugin, logger);

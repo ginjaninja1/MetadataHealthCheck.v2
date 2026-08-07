@@ -10,6 +10,16 @@ using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Scoring;
 using MetadataHealthCheck.v2.Sources.Emby;
 using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
+using SQLitePCLEx;
+
+
+// Mirrors exactly what the real EmbyServer.Program.Main does at startup
+// (confirmed via ILSpy) before any plugin code runs -- registers the actual
+// e_sqlite3 provider so SQLitePCL.pretty's static SQLite3 type can initialize.
+// A real Emby plugin never needs this call itself because the host already
+// did it; this standalone console harness has no host, so it does the host's
+// job itself, once, here.
+raw.SetProvider(new SQLite3Provider_sqlite3());
 
 // LIVE MusicBrainz run against real observation data (SmokeTest/Observations.txt).
 // HttpMusicBrainzApiClient (Resolvers/MusicBrainz/Client/) hits
@@ -42,7 +52,11 @@ Console.WriteLine("MusicBrainz data via https://musicbrainz.emby.tv/ws/2/ (HttpM
 Console.WriteLine("Uses an in-memory IMatchRepository, not real SQLite -- see InMemoryMatchRepository.cs.\n");
 
 var logger = new StructuredLogger();
-var mbClient = new HttpMusicBrainzApiClient(logger);
+// Persistent, cross-run response cache (its own file, apicache.sqlite --
+// separate from any match-result database, so it can be deleted/reinitialized
+// independently). A single instance is fine here: SmokeTest is single-threaded.
+var apiCache = new MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository("apicache.sqlite", logger);
+var mbClient = new HttpMusicBrainzApiClient(apiCache, logger);
 var identityCache = new InMemoryIdentityCache();
 var scoringConfig = new ArtistMusicBrainzConfig();
 var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboard, not part of resolution itself
@@ -139,6 +153,10 @@ foreach (var (displayName, sourceId, result) in summary)
 
 Console.WriteLine($"\nTotal live MBZ API calls this run: {mbClient.TotalApiCalls}");
 foreach (var (callType, count) in mbClient.ApiCallsByType.OrderByDescending(kv => kv.Value))
+    Console.WriteLine($"  {callType,-24} {count}");
+
+Console.WriteLine($"\nTotal persistent cache hits this run: {mbClient.TotalCacheHits}");
+foreach (var (callType, count) in mbClient.CacheHitsByType.OrderByDescending(kv => kv.Value))
     Console.WriteLine($"  {callType,-24} {count}");
 
 mbClient.Dispose();

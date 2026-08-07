@@ -7,13 +7,17 @@ namespace SQLitePCL.pretty
     // SANDBOX-ONLY TEST DOUBLE. Not part of the shipped plugin.
     //
     // Mirrors the small slice of the real SQLitePCL.pretty public API that
-    // MetadataHealthCheck.v2's storage layer uses (matching the pattern
-    // confirmed against Emby.AutoOrganize's BaseSqliteRepository /
-    // SqliteFileOrganizationRepository). The real NuGet package
-    // (SQLitePCL.pretty.core) lives on nuget.org, which this build sandbox
-    // cannot reach. This shim exists purely so the actual source can be
-    // compiled and exercised here; the production .csproj references the
-    // real package and ships zero lines of this file. See Project Log.
+    // MetadataHealthCheck.v2's storage layer uses. Production now references
+    // Emby's own private SQLitePCL.pretty.dll (via HintPath to a real
+    // Emby-Server install -- see MetadataHealthCheck.v2.csproj), not any
+    // NuGet package; this build sandbox has neither nuget.org access nor an
+    // Emby-Server install to point a HintPath at, so this shim exists purely
+    // so the actual source can be compiled and exercised here. The shim's
+    // API surface still matches the real thing because both Emby's private
+    // build and the public NuGet package implement the same underlying
+    // open-source SQLitePCL.pretty type surface -- only the lower-level raw
+    // provider each one calls into differs. The production .csproj ships
+    // zero lines of this file. See Project Log.
     // ==========================================================================
 
     public enum ConnectionFlags { Create = 1, ReadWrite = 2, ReadOnly = 4, PrivateCache = 8, NoMutex = 16 }

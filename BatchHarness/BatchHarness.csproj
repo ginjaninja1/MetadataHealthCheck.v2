@@ -8,6 +8,22 @@
 		<ProjectReference Include="..\SmokeTest\SmokeTest.csproj" />
 	</ItemGroup>
 
+	<!--
+    Own Main/process from SmokeTest's, so needs its own reference to call
+    raw.SetProvider(new SQLite3Provider_sqlite3()) independently - a
+    ProjectReference to SmokeTest doesn't make SmokeTest's own private
+    references nameable in this project's source. See SmokeTest.csproj's
+    comment for what this class actually is.
+  -->
+	<ItemGroup>
+		<Reference Include="EmbyServer">
+			<HintPath>C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\EmbyServer.dll</HintPath>
+		</Reference>
+		<Reference Include="SQLitePCLRawEx.core">
+			<HintPath>C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\SQLitePCLRawEx.core.dll</HintPath>
+		</Reference>
+	</ItemGroup>
+
 	<PropertyGroup>
 		<OutputType>Exe</OutputType>
 		<TargetFramework>net8.0</TargetFramework>

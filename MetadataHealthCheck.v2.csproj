@@ -1,17 +1,26 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
 	<!--
-    netstandard2.0 + these two PackageReferences confirmed against the
-    reference plugin Emby.AutoOrganize's own .csproj (§9, §13) - this is the
-    real deployment target, not a sandbox convenience choice, test.
+    netstandard2.0 - confirmed against the real Emby-Server install
+    (C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\), not against
+    any public NuGet package. Earlier revisions of this comment claimed the
+    SQLite reference below had been "confirmed against Emby.AutoOrganize's
+    own .csproj" - that was WRONG: Emby.AutoOrganize.csproj (and
+    Emby.Sqlite.csproj, Emby's own internal SQLite wrapper) both reference
+    Emby's private SQLitePCL.pretty.dll via HintPath, never the public
+    SQLitePCL.pretty.core NuGet package. That earlier claim went uncaught for
+    several sessions and cost real debugging time - see project log for the
+    incident. This project now matches what both real Emby-side projects
+    actually do.
 
     NOTE: This project will not restore/build inside the current build
-    sandbox, because nuget.org is not on the sandbox's allowed-domain list.
-    A separate, sandbox-only project (../SandboxValidation) compiles this
-    exact same source against a local API-compatible shim so the logic can
-    still be exercised and tested here. See Project Log "Evidence Log" for
-    detail. When building for real deployment (i.e. anywhere with normal
-    NuGet access), build THIS project directly - no shim involved.
+    sandbox, because the sandbox has no access to a real Emby-Server install
+    (or nuget.org). A separate, sandbox-only project (../SandboxValidation)
+    compiles this exact same source against a local API-compatible shim so
+    the logic can still be exercised and tested here. See Project Log
+    "Evidence Log" for detail. When building for real deployment, build THIS
+    project directly on a machine with Emby-Server installed - no shim
+    involved.
 	
   -->
 	<PropertyGroup>
@@ -25,8 +34,29 @@
 
 	<ItemGroup>
 		<PackageReference Include="mediabrowser.server.core" Version="4.9.1.90" />
-		<PackageReference Include="SQLitePCL.pretty.core" Version="1.2.2" />
 		<PackageReference Include="System.Memory" Version="4.6.0" />
+	</ItemGroup>
+
+	<!--
+    Emby's own private SQLite stack, not the public SQLitePCL.pretty.core
+    NuGet package - see the header comment above for why. SQLitePCLRawEx.core
+    is referenced even though this project's own code never calls into it
+    directly (only SQLitePCL.pretty's own public types are used): its API
+    surface is genuinely different from anything on public NuGet
+    (sqlite3_create_collation and sqlite3_bind_parameter_index overloads that
+    don't exist in the public SQLitePCLRaw line at ANY version - confirmed
+    empirically, not assumed, across both a newer and older public version
+    each failing on a different overload). Referencing it here just ensures
+    it's present in the output folder at runtime, since SQLitePCL.pretty.dll
+    depends on it.
+  -->
+	<ItemGroup>
+		<Reference Include="SQLitePCL.pretty">
+			<HintPath>C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\SQLitePCL.pretty.dll</HintPath>
+		</Reference>
+		<Reference Include="SQLitePCLRawEx.core">
+			<HintPath>C:\Users\Nicholas Bird\AppData\Roaming\Emby-Server\system\SQLitePCLRawEx.core.dll</HintPath>
+		</Reference>
 	</ItemGroup>
 
 	<!--

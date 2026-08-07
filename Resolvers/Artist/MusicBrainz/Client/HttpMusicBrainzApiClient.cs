@@ -1,7 +1,9 @@
 ﻿using System.Runtime.Serialization;
 using System.Runtime.Serialization.Json;
 using System.Text;
+using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Diagnostics;
+using MetadataHealthCheck.v2.Http;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client.Model;
 
 namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
@@ -19,40 +21,65 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
     /// Every call logs its outbound query and a summary of what came back, via
     /// StructuredLogger, so a smoke test run shows every lookup inline with the
     /// evidence/decision trace it fed.
+    ///
+    /// HTTP transport, response caching, and API-call counting all now live in
+    /// CachedHttpApiClientBase -- this class supplies only its own call-name-
+    /// to-cache-table map and TTL, plus the MusicBrainz-specific query/DTO
+    /// logic. TotalApiCalls/ApiCallsByType (live calls) and
+    /// TotalCacheHits/CacheHitsByType are inherited, not redeclared here.
     /// </summary>
-    public class HttpMusicBrainzApiClient : IMusicBrainzApiClient, IDisposable
+    public class HttpMusicBrainzApiClient : CachedHttpApiClientBase, IMusicBrainzApiClient
     {
         private const string BaseUrl = "https://musicbrainz.emby.tv/ws/2/";
 
-        private readonly HttpClient _http;
-        private readonly StructuredLogger _logger;
-
         // Every SearchArtist result is remembered here so GetArtistDisplayName/
         // GetArtistAliases can serve a candidate already seen this run without
-        // an extra live call.
+        // an extra live call. Distinct from the persistent response cache in
+        // CachedHttpApiClientBase: this is a same-instance, same-run,
+        // parsed-object shortcut that avoids re-issuing a *different* call
+        // (e.g. GetArtistDisplayName) whose answer SearchArtist already
+        // incidentally returned -- the persistent cache only ever short-
+        // circuits an identical call repeated.
         private readonly Dictionary<string, string> _knownArtistNames = new();
         private readonly Dictionary<string, List<string>> _knownArtistAliases = new();
 
-        // Recording- and artist-scoped relationship lookups are cached at this
-        // one choke point every caller shares, so two collectors needing the
-        // same recording's or artist's relationships never issue duplicate calls.
+        // Recording- and artist-scoped relationship lookups are remembered here
+        // so two collectors needing the same recording's or artist's
+        // relationships within one run never issue duplicate calls, same
+        // rationale as _knownArtistNames/_knownArtistAliases above.
         private readonly Dictionary<string, IReadOnlyList<MbRelationship>> _knownRelationships = new();
         private readonly Dictionary<string, IReadOnlyList<MbArtistRelationship>> _knownArtistRelationships = new();
 
-        // Tracks API load (not just accuracy): how many live MusicBrainz calls a
-        // resolution actually costs, broken down by call type, including calls
-        // hidden inside RecordingLookup's confirmation ladder that don't
-        // otherwise surface anywhere.
-        public int TotalApiCalls { get; private set; }
-        public Dictionary<string, int> ApiCallsByType { get; } = new();
-
-        public HttpMusicBrainzApiClient(StructuredLogger logger)
+        // callName -> persistent cache table, one per distinct call type (see
+        // ApiResponseCacheRepository doc comment for why per-call-type tables
+        // rather than one shared table). A callName missing here is
+        // deliberately uncached -- CachedHttpApiClientBase.Get logs a warning
+        // rather than silently defaulting one in.
+        private static readonly IReadOnlyDictionary<string, string> CacheTableMap = new Dictionary<string, string>
         {
-            _logger = logger;
-            _http = new HttpClient { BaseAddress = new Uri(BaseUrl) };
-        }
+            ["SearchArtist"] = "musicbrainz_artists",
+            ["GetReleaseGroupTitles"] = "musicbrainz_releasegrouptitles",
+            ["SearchRecording"] = "musicbrainz_recordings",
+            ["SearchRecordingByTitleAndDuration"] = "musicbrainz_recordings_by_title_duration",
+            ["GetRelationships"] = "musicbrainz_recordingswithrelationships",
+            ["GetArtistDisplayName"] = "musicbrainz_artist_displayname",
+            ["GetArtistAliases"] = "musicbrainz_artist_aliases",
+            ["GetArtistRelationships"] = "musicbrainz_artistrelationships",
+        };
 
-        public void Dispose() => _http.Dispose();
+        protected override IReadOnlyDictionary<string, string> CallNameToCacheTable => CacheTableMap;
+
+        // MusicBrainz relationship/alias/search data changes, but rarely and
+        // slowly for any given artist -- 30 days is a reasonable balance
+        // between staleness risk and the load/latency saved during active
+        // development, where the same artist set gets re-run often. Revisit
+        // if MB data proves to churn faster than assumed here.
+        protected override TimeSpan? DefaultCacheTtl => TimeSpan.FromDays(30);
+
+        public HttpMusicBrainzApiClient(IApiResponseCache cache, StructuredLogger logger)
+            : base(BaseUrl, cache, logger)
+        {
+        }
 
         // ---- C1: artist search ----------------------------------------------
 
@@ -81,7 +108,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
             if (results.Count == 0)
             {
                 var fallbackQuery = MusicBrainzQueryBuilder.BuildArtistFallbackQuery(name);
-                _logger.Debug("MbApi", "  -> primary SearchArtist query returned 0 results, trying fallback rung: {0}", fallbackQuery);
+                Logger.Debug("MbApi", "  -> primary SearchArtist query returned 0 results, trying fallback rung: {0}", fallbackQuery);
                 results = RunArtistSearch(fallbackQuery, name);
                 queryUsed = fallbackQuery;
             }
@@ -122,9 +149,9 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                 }
             }
 
-            _logger.Debug("MbApi", "  -> {0} artist result(s):", results.Count);
+            Logger.Debug("MbApi", "  -> {0} artist result(s):", results.Count);
             foreach (var r in results)
-                _logger.Debug("MbApi", "       {0} [{1}] type={2} score={3} aliases=[{4}]", r.Name, r.Mbid, r.Type, r.Score, string.Join(", ", r.Aliases));
+                Logger.Debug("MbApi", "       {0} [{1}] type={2} score={3} aliases=[{4}]", r.Name, r.Mbid, r.Type, r.Score, string.Join(", ", r.Aliases));
             return results;
         }
 
@@ -151,7 +178,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                 }
             }
 
-            _logger.Debug("MbApi", "  -> {0} release-group title(s), {1} flagged non-distinctive", titles.Count, titles.Count(t => !t.IsDistinctive));
+            Logger.Debug("MbApi", "  -> {0} release-group title(s), {1} flagged non-distinctive", titles.Count, titles.Count(t => !t.IsDistinctive));
             return titles;
         }
 
@@ -324,17 +351,17 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                 }
             }
 
-            _logger.Debug("MbApi", "  -> {0} recording result(s):", results.Count);
+            Logger.Debug("MbApi", "  -> {0} recording result(s):", results.Count);
             for (int i = 0; i < results.Count; i++)
             {
                 var r = results[i];
-                _logger.Debug("MbApi", "       Recording #{0}", i + 1);
-                _logger.Debug("MbApi", "         ID:     {0}", r.RecordingId);
-                _logger.Debug("MbApi", "         Track:  \"{0}\" (matches queried title: {1})", r.TrackTitle, r.TrackTitleMatches);
-                _logger.Debug("MbApi", "         Artist: {0}", r.ArtistCreditText);
-                _logger.Debug("MbApi", "         Album:  \"{0}\" (matches queried album: {1})", r.ReleaseTitle, r.ReleaseTitleMatches);
-                _logger.Debug("MbApi", "         Album Artist: {0}", r.ReleaseAlbumArtistNames.Count > 0 ? string.Join(", ", r.ReleaseAlbumArtistNames) : "(none found)");
-                _logger.Debug("MbApi", "         Length: {0}  Status: {1}  Type: {2}  Releases: {3}  Score: {4}",
+                Logger.Debug("MbApi", "       Recording #{0}", i + 1);
+                Logger.Debug("MbApi", "         ID:     {0}", r.RecordingId);
+                Logger.Debug("MbApi", "         Track:  \"{0}\" (matches queried title: {1})", r.TrackTitle, r.TrackTitleMatches);
+                Logger.Debug("MbApi", "         Artist: {0}", r.ArtistCreditText);
+                Logger.Debug("MbApi", "         Album:  \"{0}\" (matches queried album: {1})", r.ReleaseTitle, r.ReleaseTitleMatches);
+                Logger.Debug("MbApi", "         Album Artist: {0}", r.ReleaseAlbumArtistNames.Count > 0 ? string.Join(", ", r.ReleaseAlbumArtistNames) : "(none found)");
+                Logger.Debug("MbApi", "         Length: {0}  Status: {1}  Type: {2}  Releases: {3}  Score: {4}",
                     r.LengthMs.HasValue ? $"{r.LengthMs}ms" : "(none)", r.ReleaseStatus ?? "(none)", r.ReleaseGroupPrimaryType ?? "(none)", r.ReleaseCount, r.Score);
                 // NOTE: no AlbumArtist or Relationship fields here -- a raw recording
                 // search result doesn't carry either. AlbumArtist isn't a MusicBrainz
@@ -420,7 +447,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                 }
             }
 
-            _logger.Debug("MbApi", "  -> {0} recording result(s) within qdur:[{1} TO {2}]:", results.Count, low, high);
+            Logger.Debug("MbApi", "  -> {0} recording result(s) within qdur:[{1} TO {2}]:", results.Count, low, high);
             return results;
         }
 
@@ -432,9 +459,9 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
 
             if (_knownRelationships.TryGetValue(recordingId, out var cached))
             {
-                _logger.Info("MbApi", "[GetRelationships] recordingId={0}", recordingId);
-                _logger.Info("MbApi", "  GET https://musicbrainz.emby.tv/ws/2/{0}", url);
-                _logger.Debug("MbApi", "  -> cached from an earlier call, no live call needed. {0} relationship(s).", cached.Count);
+                Logger.Info("MbApi", "[GetRelationships] recordingId={0}", recordingId);
+                Logger.Info("MbApi", "  GET https://musicbrainz.emby.tv/ws/2/{0}", url);
+                Logger.Debug("MbApi", "  -> cached from an earlier call, no live call needed. {0} relationship(s).", cached.Count);
                 return cached;
             }
 
@@ -473,9 +500,9 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                 }
             }
 
-            _logger.Debug("MbApi", "  -> {0} relationship(s):", results.Count);
+            Logger.Debug("MbApi", "  -> {0} relationship(s):", results.Count);
             foreach (var r in results)
-                _logger.Debug("MbApi", "       {0}({1})={2}", r.RelationshipType, r.Level, r.ArtistMbid);
+                Logger.Debug("MbApi", "       {0}({1})={2}", r.RelationshipType, r.Level, r.ArtistMbid);
             _knownRelationships[recordingId] = results;
             return results;
         }
@@ -488,16 +515,16 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
 
             if (_knownArtistNames.TryGetValue(artistMbid, out var cached))
             {
-                _logger.Info("MbApi", "[GetArtistDisplayName] artistMbid={0}", artistMbid);
-                _logger.Info("MbApi", "  GET https://musicbrainz.emby.tv/ws/2/{0}", url);
-                _logger.Debug("MbApi", "  -> cached from an earlier SearchArtist result, no live call needed. name=\"{0}\"", cached);
+                Logger.Info("MbApi", "[GetArtistDisplayName] artistMbid={0}", artistMbid);
+                Logger.Info("MbApi", "  GET https://musicbrainz.emby.tv/ws/2/{0}", url);
+                Logger.Debug("MbApi", "  -> cached from an earlier SearchArtist result, no live call needed. name=\"{0}\"", cached);
                 return cached;
             }
 
             var body = Get(url, "GetArtistDisplayName", $"artistMbid={artistMbid}");
             var parsed = body == null ? null : DeserializeJson<ArtistDto>(body);
             var name = parsed?.Name ?? "";
-            _logger.Debug("MbApi", "  -> name=\"{0}\"", name);
+            Logger.Debug("MbApi", "  -> name=\"{0}\"", name);
             if (name != "") _knownArtistNames[artistMbid] = name;
             return name;
         }
@@ -506,7 +533,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
         {
             if (_knownArtistAliases.TryGetValue(artistMbid, out var cached))
             {
-                _logger.Debug("MbApi", "[GetArtistAliases] artistMbid={0} -- cached from an earlier SearchArtist result, no live call needed. {1} alias(es).", artistMbid, cached.Count);
+                Logger.Debug("MbApi", "[GetArtistAliases] artistMbid={0} -- cached from an earlier SearchArtist result, no live call needed. {1} alias(es).", artistMbid, cached.Count);
                 return cached;
             }
 
@@ -520,7 +547,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                     if (!string.IsNullOrEmpty(al.Name))
                         aliases.Add(al.Name!);
 
-            _logger.Debug("MbApi", "  -> {0} alias(es): {1}", aliases.Count, string.Join(", ", aliases));
+            Logger.Debug("MbApi", "  -> {0} alias(es): {1}", aliases.Count, string.Join(", ", aliases));
             _knownArtistAliases[artistMbid] = aliases;
             return aliases;
         }
@@ -535,7 +562,7 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
         {
             if (_knownArtistRelationships.TryGetValue(artistMbid, out var cached))
             {
-                _logger.Debug("MbApi", "[GetArtistRelationships] artistMbid={0} -- cached from an earlier call, no live call needed. {1} relation(s).", artistMbid, cached.Count);
+                Logger.Debug("MbApi", "[GetArtistRelationships] artistMbid={0} -- cached from an earlier call, no live call needed. {1} relation(s).", artistMbid, cached.Count);
                 return cached;
             }
 
@@ -561,44 +588,18 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
                 }
             }
 
-            _logger.Debug("MbApi", "  -> {0} artist relation(s):", results.Count);
+            Logger.Debug("MbApi", "  -> {0} artist relation(s):", results.Count);
             foreach (var r in results)
-                _logger.Debug("MbApi", "       type=\"{0}\" ({1}) -> \"{2}\" [{3}]", r.RelationshipType, r.RelationshipTypeId, r.ArtistName, r.ArtistMbid);
+                Logger.Debug("MbApi", "       type=\"{0}\" ({1}) -> \"{2}\" [{3}]", r.RelationshipType, r.RelationshipTypeId, r.ArtistName, r.ArtistMbid);
             _knownArtistRelationships[artistMbid] = results;
             return results;
         }
 
         // ---- shared plumbing ---------------------------------------------------
-
-        private string? Get(string relativeUrl, string callName, string callDescription)
-        {
-            TotalApiCalls++;
-            ApiCallsByType[callName] = ApiCallsByType.TryGetValue(callName, out var n) ? n + 1 : 1;
-            _logger.Info("MbApi", "[{0}] {1}", callName, callDescription);
-            _logger.Info("MbApi", "  GET {0}{1}", BaseUrl, relativeUrl);
-            try
-            {
-                var response = _http.GetAsync(relativeUrl).GetAwaiter().GetResult();
-                if (!response.IsSuccessStatusCode)
-                {
-                    // Added 2026-07-27: Location header logged specifically to diagnose an
-                    // observed 301 on GetRelationships for one recording MBID while identical
-                    // calls for other recordings succeeded -- distinguishes "this recording was
-                    // merged/redirected by MusicBrainz itself" from "the client isn't following
-                    // a redirect it should" (default HttpClientHandler.AllowAutoRedirect is true,
-                    // so seeing a raw redirect status here at all is the surprising part).
-                    var location = response.Headers.Location?.ToString() ?? "(none)";
-                    _logger.Warn("MbApi", "  -> HTTP {0} for {1} -- Location: {2}", (int)response.StatusCode, relativeUrl, location);
-                    return null;
-                }
-                return response.Content.ReadAsStringAsync().GetAwaiter().GetResult();
-            }
-            catch (Exception ex)
-            {
-                _logger.ErrorException("MbApi", $"  -> request failed for {relativeUrl}", ex);
-                return null;
-            }
-        }
+        // Get(...) itself (HTTP transport, response caching, live-call counting)
+        // is inherited from CachedHttpApiClientBase -- see that class for the
+        // 301-redirect-Location-header diagnostic note (added 2026-07-27) and
+        // the rest of the transport logic previously here.
 
         private static T? DeserializeJson<T>(string json) where T : class
         {

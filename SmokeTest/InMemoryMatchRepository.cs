@@ -4,18 +4,20 @@ using MetadataHealthCheck.v2.Core.Model;
 namespace SmokeTest;
 
 // Bypasses the real SQLite-backed MatchRepository entirely. This exists
-// because SQLitePCL.pretty.core 1.2.2 (the real package, matching the
-// reference plugin Emby.AutoOrganize) has a narrow, undocumented binary
-// compatibility window against SQLitePCLRaw provider versions - inside a
-// real Emby host this is a non-issue (the host supplies an already-
-// initialized provider before any plugin code runs), but a standalone
-// console harness has to supply and version-match one itself, which turned
-// into an unproductive rabbit hole. This fake sidesteps that question
-// entirely so the actual thing worth verifying here - candidate generation,
-// evidence collection, scoring, decision gate, identity cache behavior -
-// can be tested without any native SQLite dependency at all. Real SQLite
-// persistence should be verified separately, once, inside an actual Emby
-// host where the provider-version question doesn't exist.
+// because the public SQLitePCL.pretty.core NuGet package (which this repo
+// used before discovering the reference plugins never touch it) has named-
+// parameter binds that call a public SQLitePCLRaw method which simply
+// doesn't exist at ANY public version -- confirmed empirically, not
+// assumed: a newer public version was missing one overload, an older one
+// was missing a different overload. Emby.AutoOrganize/Emby.Sqlite avoid this
+// entirely by referencing Emby's own private SQLitePCL.pretty.dll, whose
+// named-bind implementation never calls that method at all (see
+// Storage/Sqlite/SqliteExtensions.cs and the real MetadataHealthCheck.v2.csproj
+// for the actual fix now in place). This in-memory fake predates that fix and
+// remains useful for its original purpose regardless: exercising candidate
+// generation, evidence collection, scoring, decision gate, and identity cache
+// behavior without any native SQLite dependency at all, standalone from
+// whatever the SQLite layer is doing.
 public class InMemoryMatchRepository : IMatchRepository
 {
     private readonly List<Candidate> _candidates = new();
