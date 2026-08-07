@@ -106,6 +106,10 @@ var scoringConfig = new ArtistMusicBrainzConfig(); // shared: read-only, safe ac
 var apiCache = new MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository("apicache.sqlite", new StructuredLogger(writeToConsole: false));
 
 var rows = new System.Collections.Concurrent.ConcurrentBag<BatchResultRow>();
+// Aggregated across every per-artist mbClient (each artist gets its own
+// instance, see BuildStack) so the final summary can show WHICH call type(s)
+// account for any residual live calls on a full rerun, not just a total.
+var apiCallsByTypeTotal = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
 var overallStopwatch = Stopwatch.StartNew();
 var completed = 0;
 var consoleLock = new object();
@@ -161,6 +165,29 @@ await Parallel.ForEachAsync(
             row.ElapsedMs = stopwatch.ElapsedMilliseconds;
             row.ApiCalls = mbClient.TotalApiCalls;
             row.CacheHits = mbClient.TotalCacheHits;
+            foreach (var (callType, count) in mbClient.ApiCallsByType)
+                apiCallsByTypeTotal.AddOrUpdate(callType, count, (_, existing) => existing + count);
+
+            // TEMPORARY DIAGNOSTIC: tracking down why GetArtistRelationships/
+            // GetRelationships show residual live calls on a full rerun where
+            // SearchArtist etc. are 100% cached. Prints the exact live-call
+            // URL(s) for any artist affected, so two runs can be diffed to see
+            // whether it's the SAME artists/URLs each time (deterministic,
+            // worth root-causing) or DIFFERENT ones (more consistent with
+            // per-run candidate-selection non-determinism). Remove once
+            // resolved.
+            if (mbClient.ApiCallsByType.ContainsKey("GetArtistRelationships") || mbClient.ApiCallsByType.ContainsKey("GetRelationships"))
+            {
+                var relevantLines = logger.Lines.Where(l => l.Contains("GET ") &&
+                    (l.Contains("artist-rels") || l.Contains("relations") || l.Contains("inc=") || l.Contains("recording")));
+                lock (Console.Out)
+                {
+                    Console.WriteLine($"[diagnostic] {artist.DisplayName} ({artist.SourceId}) had a live relationship-lookup call:");
+                    foreach (var line in relevantLines)
+                        Console.WriteLine($"    {line}");
+                }
+            }
+
             mbClient.Dispose();
         }
 
@@ -197,6 +224,8 @@ AccuracyReport.WriteCsv(outputCsvPath, resultRows);
 Console.WriteLine($"\nDetail CSV written to {outputCsvPath}");
 Console.WriteLine($"Total wall time: {overallStopwatch.Elapsed:mm\\:ss}");
 Console.WriteLine($"Total live MBZ API calls across all workers: {resultRows.Sum(r => r.ApiCalls)}");
+foreach (var (callType, count) in apiCallsByTypeTotal.OrderByDescending(kv => kv.Value))
+    Console.WriteLine($"  {callType,-24} {count}");
 
 AccuracyReport.PrintConsoleSummary(resultRows);
 

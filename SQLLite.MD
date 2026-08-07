@@ -64,6 +64,47 @@ to miss precisely because the real plugin code never needs to think about it
 setup is required, it means the setup already happened elsewhere before the
 plugin's own code runs.
 
+## SQLite in Emby plugins: `Clone()`-based connection sharing needs whole-method locking, not just around schema changes
+
+The Emby.AutoOrganize reference `BaseSqliteRepository` pattern opens one real
+native connection once, then hands out `Clone()`d wrappers to callers on every
+subsequent request. **`Clone()` does not open an independent native
+connection** - confirmed by decompiling the actual `SQLiteDatabaseConnection.Clone`
+method: it constructs a new managed wrapper object that stores a reference to
+the *same* underlying native `sqlite3` handle the original connection already
+held. Every "connection" handed out this way, across every thread, is really
+the same one native handle wearing different managed costumes.
+
+Combined with `ConnectionFlags.NoMutex` (used by the reference pattern
+specifically to opt OUT of SQLite's own internal thread-safety, on the
+assumption the application will serialize access itself), this means genuinely
+concurrent calls into that shared native handle from multiple threads - even
+two ordinary, unrelated `SELECT`s, not just schema changes - can produce a
+native `AccessViolationException` (real memory corruption, not a catchable
+managed exception or a benign `SQLITE_BUSY`).
+
+The reference plugin's own repository never hits this because **every single
+one of its methods wraps its entire body** - connection creation through
+statement execution - in `using (WriteLock.Write())` (or `.Read()`, which,
+notably, calls the exact same `EnterWriteLock()` under the hood in the
+reference's own extension methods; there is no real concurrent-reader path at
+all). An initial, narrower fix that only serialized schema-creation DDL
+(reasoning: "DDL is the operation most sensitive to concurrency") turned out
+to be insufficient - the crash reappeared on an ordinary `SELECT` once the DDL
+race was closed, because the underlying shared-handle problem is general, not
+specific to schema changes.
+
+**Practical rule:** when borrowing this exact `Clone()`-based repository
+pattern, replicate the *whole-method* `WriteLock.Read()`/`.Write()` wrapping
+on every single data-access method from day one, not incrementally added
+after each failure mode surfaces. Partial adoption of a proven-safe pattern
+(taking the connection-sharing mechanism but not the locking discipline that
+makes it safe) will pass a low-concurrency smoke test and then fail
+unpredictably under real parallel load - exactly the shape of bug that's easy
+to under-diagnose as "add a narrower lock here" when the actual fix is "lock
+the whole operation, matching what the trusted reference actually does
+everywhere, not just where the first crash happened to occur."
+
 ## Referencing a private host DLL only makes its types visible in that one project
 
 A `<Reference HintPath="...">` to a DLL is not transitive through a
