@@ -110,6 +110,7 @@ var rows = new System.Collections.Concurrent.ConcurrentBag<BatchResultRow>();
 // instance, see BuildStack) so the final summary can show WHICH call type(s)
 // account for any residual live calls on a full rerun, not just a total.
 var apiCallsByTypeTotal = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
+var failuresByTypeTotal = new System.Collections.Concurrent.ConcurrentDictionary<string, int>();
 var overallStopwatch = Stopwatch.StartNew();
 var completed = 0;
 var consoleLock = new object();
@@ -127,7 +128,8 @@ await Parallel.ForEachAsync(
             ExpectedMbid = groundTruth.TryGetValue(artist.SourceId, out var expected) ? expected : "",
         };
 
-        var (logger, mbClient, identityCache, plugin) = BuildStack(apiCache);
+        var (logger, mbClient, identityCache, plugin) = BuildStack(apiCache, scoringConfig);
+        mbClient.ResolutionContextLabel = $"{artist.DisplayName} ({artist.SourceId})";
         var stopwatch = Stopwatch.StartNew();
         try
         {
@@ -165,8 +167,16 @@ await Parallel.ForEachAsync(
             row.ElapsedMs = stopwatch.ElapsedMilliseconds;
             row.ApiCalls = mbClient.TotalApiCalls;
             row.CacheHits = mbClient.TotalCacheHits;
+            // Only "auto_accept" counts as matched for TTL-reconciliation
+            // purposes -- see ArtistMusicBrainzConfig.MusicBrainzApiCacheFailureTtl's
+            // doc comment. row.Decision is "" if an exception was thrown
+            // above, which correctly falls through to "not matched" here --
+            // an unknown outcome should re-check sooner, not assume success.
+            mbClient.ReconcileFailureTtls(row.Decision == "auto_accept");
             foreach (var (callType, count) in mbClient.ApiCallsByType)
                 apiCallsByTypeTotal.AddOrUpdate(callType, count, (_, existing) => existing + count);
+            foreach (var (callType, count) in mbClient.FailuresByType)
+                failuresByTypeTotal.AddOrUpdate(callType, count, (_, existing) => existing + count);
 
             // TEMPORARY DIAGNOSTIC: tracking down why GetArtistRelationships/
             // GetRelationships show residual live calls on a full rerun where
@@ -227,6 +237,13 @@ Console.WriteLine($"Total live MBZ API calls across all workers: {resultRows.Sum
 foreach (var (callType, count) in apiCallsByTypeTotal.OrderByDescending(kv => kv.Value))
     Console.WriteLine($"  {callType,-24} {count}");
 
+if (!failuresByTypeTotal.IsEmpty)
+{
+    Console.WriteLine($"\nTotal failed live calls across all workers: {failuresByTypeTotal.Sum(kv => kv.Value)} (see [FAILURE] lines above for reasons)");
+    foreach (var (callType, count) in failuresByTypeTotal.OrderByDescending(kv => kv.Value))
+        Console.WriteLine($"  {callType,-24} {count}");
+}
+
 AccuracyReport.PrintConsoleSummary(resultRows);
 
 return 0;
@@ -234,18 +251,21 @@ return 0;
 // ---------------------------------------------------------------------------
 
 static (StructuredLogger logger, HttpMusicBrainzApiClient mbClient, InMemoryIdentityCache identityCache, MusicBrainzArtistResolverPlugin plugin) BuildStack(
-    MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository apiCache)
+    MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository apiCache,
+    ArtistMusicBrainzConfig scoringConfig)
 {
     // Fresh logger too, not just for thread safety -- StructuredLogger.Lines is
     // also a plain, unlocked List<string> (confirmed by reading Diagnostics/
     // StructuredLogger.cs), same category of problem as the two caches above.
-    // apiCache itself is the one exception to "fresh per worker" -- see the
-    // shared-instance note where it's constructed above.
+    // apiCache and scoringConfig are the two exceptions to "fresh per worker"
+    // -- see the shared-instance note where apiCache is constructed above;
+    // scoringConfig is read-only config, safe to share, and previously this
+    // method created its own redundant local copy for the plugin alone --
+    // simplified to just pass the one shared instance through to both.
     var logger = new StructuredLogger(writeToConsole: false); // suppress per-artist console spam; keeps Lines buffer for on-error inspection
-    var mbClient = new HttpMusicBrainzApiClient(apiCache, logger);
+    var mbClient = new HttpMusicBrainzApiClient(apiCache, logger, scoringConfig);
     var identityCache = new InMemoryIdentityCache();
-    var scoringConfigForPlugin = new ArtistMusicBrainzConfig(); // plugin ctor requires one; shared config values are identical to the outer one
-    var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfigForPlugin, logger);
+    var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfig, logger);
     return (logger, mbClient, identityCache, plugin);
 }
 

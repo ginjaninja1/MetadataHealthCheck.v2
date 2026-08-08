@@ -5,6 +5,7 @@ using MetadataHealthCheck.v2.Core.Interfaces;
 using MetadataHealthCheck.v2.Diagnostics;
 using MetadataHealthCheck.v2.Http;
 using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client.Model;
+using MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config;
 
 namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
 {
@@ -69,16 +70,20 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Client
 
         protected override IReadOnlyDictionary<string, string> CallNameToCacheTable => CacheTableMap;
 
-        // MusicBrainz relationship/alias/search data changes, but rarely and
-        // slowly for any given artist -- 30 days is a reasonable balance
-        // between staleness risk and the load/latency saved during active
-        // development, where the same artist set gets re-run often. Revisit
-        // if MB data proves to churn faster than assumed here.
-        protected override TimeSpan? DefaultCacheTtl => TimeSpan.FromDays(30);
+        private readonly ArtistMusicBrainzConfig _config;
 
-        public HttpMusicBrainzApiClient(IApiResponseCache cache, StructuredLogger logger)
+        // Moved into ArtistMusicBrainzConfig (MusicBrainzApiCacheDefaultTtl /
+        // MusicBrainzApiCacheFailureTtl) rather than hardcoded here, alongside
+        // every other resolver knob (AutoAcceptThreshold etc.) -- see that
+        // class's own doc comment for the reasoning behind each TTL's value
+        // and how ReconcileFailureTtls uses both.
+        protected override TimeSpan? DefaultCacheTtl => _config.MusicBrainzApiCacheDefaultTtl;
+        protected override TimeSpan? FailureCacheTtl => _config.MusicBrainzApiCacheFailureTtl;
+
+        public HttpMusicBrainzApiClient(IApiResponseCache cache, StructuredLogger logger, ArtistMusicBrainzConfig config)
             : base(BaseUrl, cache, logger)
         {
+            _config = config;
         }
 
         // ---- C1: artist search ----------------------------------------------

@@ -21,6 +21,29 @@ namespace MetadataHealthCheck.v2.Resolvers.Artist.MusicBrainz.Config
         public double MinMarginOverRunnerUp { get; set; } = 1.5;
         public string Version { get; set; } = "phase2-default";
 
+        // How long a persistently-cached MusicBrainz API response (success or
+        // failure) is trusted before a fresh live call is made again.
+        // Success: MB relationship/alias/search data changes slowly for any
+        // given artist, so a long TTL trades a small staleness risk for a
+        // large reduction in live-call volume during active development.
+        // Failure (e.g. a 404 for a search-result MBID MusicBrainz's own
+        // artist store no longer recognises): cached at first occurrence
+        // under the SAME long default TTL, then retroactively corrected once
+        // the artist's own resolution outcome is known -- see
+        // CachedHttpApiClientBase.ReconcileFailureTtls. "Matched" here means
+        // status == "auto_accept" ONLY (not needs_review, not auto_reject):
+        // if the artist was auto-accepted despite touching this failure, the
+        // failure was noise and the long TTL is left in place; otherwise it's
+        // dropped to MusicBrainzApiCacheFailureTtl so a MusicBrainz-side fix
+        // (a deleted ID reappearing, a merge landing) is picked up sooner
+        // rather than waiting out the full success-case TTL. Binary
+        // re-affirmation, not escalating decay: every subsequent resolution
+        // that touches the same failed entry re-applies whichever of these
+        // two TTLs matches ITS OWN outcome (last-write-wins) -- deliberately
+        // simple, no failure-streak counter to get wrong.
+        public TimeSpan MusicBrainzApiCacheDefaultTtl { get; set; } = TimeSpan.FromDays(30);
+        public TimeSpan MusicBrainzApiCacheFailureTtl { get; set; } = TimeSpan.FromDays(1);
+
         public CandidateGenerationConfig CandidateGeneration { get; set; } = new();
 
         // Multiplies whatever corroboration-tier LLR a recording-lookup hit

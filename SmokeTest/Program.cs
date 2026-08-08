@@ -12,7 +12,6 @@ using MetadataHealthCheck.v2.Storage;
 using SmokeTest;
 using SQLitePCLEx;
 
-
 // Mirrors exactly what the real EmbyServer.Program.Main does at startup
 // (confirmed via ILSpy) before any plugin code runs -- registers the actual
 // e_sqlite3 provider so SQLitePCL.pretty's static SQLite3 type can initialize.
@@ -56,9 +55,9 @@ var logger = new StructuredLogger();
 // separate from any match-result database, so it can be deleted/reinitialized
 // independently). A single instance is fine here: SmokeTest is single-threaded.
 var apiCache = new MetadataHealthCheck.v2.Storage.Sqlite.ApiResponseCacheRepository("apicache.sqlite", logger);
-var mbClient = new HttpMusicBrainzApiClient(apiCache, logger);
-var identityCache = new InMemoryIdentityCache();
 var scoringConfig = new ArtistMusicBrainzConfig();
+var mbClient = new HttpMusicBrainzApiClient(apiCache, logger, scoringConfig);
+var identityCache = new InMemoryIdentityCache();
 var scorer = new SimpleWeightedSumScorer(); // reused post-hoc for the scoreboard, not part of resolution itself
 
 var plugin = new MusicBrainzArtistResolverPlugin(mbClient, scoringConfig, logger);
@@ -97,6 +96,7 @@ var summary = new List<(string DisplayName, string SourceId, MatchResult Result)
 
 foreach (var artist in artists)
 {
+    mbClient.ResolutionContextLabel = $"{artist.DisplayName} ({artist.SourceId})";
     Banner($"ARTIST: {artist.DisplayName}  ({artist.SourceId})");
 
     PrintObservationAvailability(artist);
@@ -144,6 +144,11 @@ foreach (var artist in artists)
     Pause();
 
     summary.Add((artist.DisplayName, artist.SourceId, result));
+    // Only "auto_accept" counts as matched for TTL-reconciliation purposes --
+    // see ArtistMusicBrainzConfig.MusicBrainzApiCacheFailureTtl's doc comment.
+    // needs_review does NOT count, despite being a legitimate resolution
+    // outcome elsewhere in this codebase -- deliberately narrower here.
+    mbClient.ReconcileFailureTtls(result.Status == "auto_accept");
     Console.WriteLine();
 }
 
@@ -158,6 +163,13 @@ foreach (var (callType, count) in mbClient.ApiCallsByType.OrderByDescending(kv =
 Console.WriteLine($"\nTotal persistent cache hits this run: {mbClient.TotalCacheHits}");
 foreach (var (callType, count) in mbClient.CacheHitsByType.OrderByDescending(kv => kv.Value))
     Console.WriteLine($"  {callType,-24} {count}");
+
+if (mbClient.TotalFailures > 0)
+{
+    Console.WriteLine($"\nTotal failed live calls this run: {mbClient.TotalFailures} (see [FAILURE] lines above for reasons)");
+    foreach (var (callType, count) in mbClient.FailuresByType.OrderByDescending(kv => kv.Value))
+        Console.WriteLine($"  {callType,-24} {count}");
+}
 
 mbClient.Dispose();
 return 0;
