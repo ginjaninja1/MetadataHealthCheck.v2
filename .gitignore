@@ -6,3 +6,6 @@
 
 # Explicitly ensure the main file is never ignored
 !v2specification.md
+/BatchHarness/apicache.sqlite
+/BatchHarness/apicache.sqlite-shm
+/BatchHarness/apicache.sqlite-wal
